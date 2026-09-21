@@ -20,4 +20,22 @@ public record RagDocument(
     int chunkCount,
     OffsetDateTime uploadedAt,
     String previewText,
-    boolean active) {}
+    boolean active) {
+
+  /** Retiro lógico (CA5 de `docs/historias/ep-09/h01.md`): la fuente deja de participar en
+   * listados y búsquedas nuevas, pero su registro y sus chunks se conservan para auditoría —
+   * nunca se traduce en un `DELETE`. Idempotente: retirar una fuente ya retirada devuelve el mismo
+   * estado, no es un error. */
+  public RagDocument retire() {
+    if (!active) {
+      return this;
+    }
+    return new RagDocument(id, courseCohortId, fileName, fileSizeBytes, pageCount, chunkCount, uploadedAt, previewText, false);
+  }
+
+  /** Aislamiento por cohorte (`AGENTS.md` §2): una fuente solo es visible/administrable desde su
+   * propio `courseCohortId`. */
+  public boolean belongsTo(UUID courseCohortId) {
+    return this.courseCohortId != null && this.courseCohortId.equals(courseCohortId);
+  }
+}

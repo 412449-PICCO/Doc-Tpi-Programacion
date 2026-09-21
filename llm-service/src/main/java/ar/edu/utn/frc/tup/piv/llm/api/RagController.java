@@ -6,6 +6,7 @@ import ar.edu.utn.frc.tup.piv.llm.domain.rag.DiagramDecodeResult;
 import ar.edu.utn.frc.tup.piv.llm.domain.rag.DocumentChunk;
 import ar.edu.utn.frc.tup.piv.llm.domain.rag.ImageDetection;
 import ar.edu.utn.frc.tup.piv.llm.domain.rag.RagDocument;
+import ar.edu.utn.frc.tup.piv.llm.domain.rag.RagDocumentNotFoundException;
 import ar.edu.utn.frc.tup.piv.llm.security.CallerIdentity;
 import ar.edu.utn.frc.tup.piv.llm.security.CourseAuthorization;
 import ar.edu.utn.frc.tup.piv.llm.security.RagGatewayAuthorization;
@@ -72,10 +73,20 @@ public class RagController {
     return ResponseEntity.status(HttpStatus.CREATED).body(document);
   }
 
+  /** Retiro lógico (#672). La cohorte se deriva de la fuente y se exige rol docente sobre ella;
+   * una fuente inexistente o de una cohorte que el actor no administra responde 404 (no 403) para
+   * no filtrar existencia. El contrato (`DELETE /rag/documents/{documentId}` → 204/404) no cambia. */
   @DeleteMapping("/documents/{id}")
   public ResponseEntity<Void> deleteDocument(@PathVariable UUID id, @RequestHeader HttpHeaders headers) {
-    authorization.require(headers);
-    ingestion.deactivate(id);
+    CallerIdentity actor = authorization.require(headers);
+    UUID courseCohortId = ingestion.get(id).map(RagDocument::courseCohortId)
+        .orElseThrow(() -> new RagDocumentNotFoundException(id));
+    try {
+      courseAuthorization.requireTeacher(courseCohortId, actor, headers);
+    } catch (ResponseStatusException forbidden) {
+      throw new RagDocumentNotFoundException(id);
+    }
+    ingestion.retire(id, courseCohortId);
     return ResponseEntity.noContent().build();
   }
 

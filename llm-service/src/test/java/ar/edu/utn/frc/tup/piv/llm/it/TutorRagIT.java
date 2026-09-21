@@ -7,15 +7,21 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import ar.edu.utn.frc.tup.piv.llm.application.EmbeddingInvocationService;
 import ar.edu.utn.frc.tup.piv.llm.application.agent.RagQueryService;
+import ar.edu.utn.frc.tup.piv.llm.domain.rag.VectorStorePort;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
 class TutorRagIT extends AbstractIntegrationIT {
   @Autowired RagQueryService ragQuery;
+  @Autowired VectorStorePort vectorStore;
+  @Autowired EmbeddingInvocationService embeddings;
+  @Autowired JdbcTemplate jdbc;
 
   static MockHttpServletRequestBuilder cohortTeacher(MockHttpServletRequestBuilder b, UUID cohort) {
     return b.header("X-User-Roles", "TEACHER").header("X-Teacher-Course-Ids", cohort.toString());
@@ -96,10 +102,68 @@ class TutorRagIT extends AbstractIntegrationIT {
     // Aislamiento por cohorte: otra cohorte no ve fragmentos de este documento.
     assertThat(ragQuery.queryCohortContext(UUID.randomUUID(), "requerimientos del producto", 3)).isEmpty();
 
-    mvc.perform(practice(delete("/api/llm/rag/documents/" + docId))).andExpect(status().isNoContent());
+    // Retirar exige rol docente sobre la cohorte de la fuente: sin claims de docente, 404 (no 403).
+    mvc.perform(practice(delete("/api/llm/rag/documents/" + docId))).andExpect(status().isNotFound());
+    mvc.perform(cohortTeacher(practice(delete("/api/llm/rag/documents/" + docId)), cohort)).andExpect(status().isNoContent());
     assertThat(body(mvc.perform(cohortTeacher(practice(get("/api/llm/rag/documents")), cohort).param("courseCohortId", cohort.toString()))
         .andExpect(status().isOk())).size()).isZero();
     assertThat(ragQuery.queryCohortContext(cohort, "requerimientos del producto", 3)).isEmpty();
+  }
+
+  /** Escenario BDD 3 de `docs/historias/ep-09/h01.md` (#672, CA5): dada una fuente ya indexada y
+   * usada en consultas previas, cuando el docente la retira, deja de aparecer en el listado y en
+   * búsquedas nuevas, pero su registro y sus chunks siguen en la base (borrado lógico). */
+  @Test
+  void retiringASourceHidesItFromListingAndSearchButKeepsItsAuditTrail() throws Exception {
+    UUID cohort = UUID.randomUUID();
+    UUID learner = UUID.randomUUID();
+    var doc = body(mvc.perform(practice(post("/api/llm/rag/documents/sample")).header("Idempotency-Key", UUID.randomUUID().toString()).param("courseCohortId", cohort.toString()))
+        .andExpect(status().isCreated()));
+    UUID docId = UUID.fromString(doc.path("id").asText());
+    int chunkCount = doc.path("chunkCount").asInt();
+
+    // Dado: la fuente fue usada en una consulta previa (queda una conversación que la cita).
+    Thread.sleep(1300); // RagQueryGuardrail: cooldown de 1,2 s por usuario, compartido con el otro test de chat.
+    var answer = body(mvc.perform(practice(post("/api/llm/rag/chat")).header("Idempotency-Key", UUID.randomUUID().toString())
+        .content("{\"courseCohortId\":\"" + cohort + "\",\"learnerId\":\"" + learner + "\",\"documentIds\":[\"" + docId
+            + "\"],\"pregunta\":\"¿De qué trata el documento?\"}")).andExpect(status().isOk()));
+    assertThat(answer.path("estado").asText()).isEqualTo("OK");
+    String conversationId = answer.path("conversacionId").asText();
+    assertThat(ragQuery.queryCohortContext(cohort, "requerimientos del producto", 3)).isNotEmpty();
+
+    // Cuando: un docente de OTRA cohorte intenta retirarla → 404 (como si no existiera), y sigue activa.
+    mvc.perform(cohortTeacher(practice(delete("/api/llm/rag/documents/" + docId)), UUID.randomUUID())).andExpect(status().isNotFound());
+    assertThat(jdbc.queryForObject("select active from llm.rag_documents where id = ?", Boolean.class, docId)).isTrue();
+
+    // Cuando: el docente de la cohorte la retira.
+    mvc.perform(cohortTeacher(practice(delete("/api/llm/rag/documents/" + docId)), cohort)).andExpect(status().isNoContent());
+
+    // Entonces: no aparece en el listado ni en búsquedas nuevas (ni pidiéndola por id explícitamente).
+    assertThat(body(mvc.perform(cohortTeacher(practice(get("/api/llm/rag/documents")), cohort).param("courseCohortId", cohort.toString()))
+        .andExpect(status().isOk())).size()).isZero();
+    assertThat(ragQuery.queryCohortContext(cohort, "requerimientos del producto", 3)).isEmpty();
+    assertThat(vectorStore.searchTopK(java.util.List.of(docId), embeddings.embed("requerimientos del producto", java.time.Duration.ofSeconds(8)).vector(), 3))
+        .as("el filtro por active se aplica en la query, no después del top-K").isEmpty();
+    var afterRetire = body(mvc.perform(practice(post("/api/llm/rag/chat")).header("Idempotency-Key", UUID.randomUUID().toString())
+        .content("{\"courseCohortId\":\"" + cohort + "\",\"learnerId\":\"" + learner + "\",\"documentIds\":[\"" + docId
+            + "\"],\"pregunta\":\"¿Qué dice el documento sobre los requerimientos?\"}")).andExpect(status().isOk()));
+    assertThat(afterRetire.path("estado").asText()).isEqualTo("BLOCKED_NO_SOURCE");
+
+    // Pero: la fila, sus chunks y el PDF siguen en la base (borrado lógico, historial de auditoría intacto).
+    assertThat(jdbc.queryForObject("select active from llm.rag_documents where id = ?", Boolean.class, docId)).isFalse();
+    assertThat(jdbc.queryForObject("select pdf_bytes is not null from llm.rag_documents where id = ?", Boolean.class, docId)).isTrue();
+    assertThat(jdbc.queryForObject("select count(*) from llm.rag_chunks where document_id = ?", Integer.class, docId))
+        .isGreaterThanOrEqualTo(chunkCount);
+    assertThat(body(mvc.perform(practice(get("/api/llm/rag/documents/" + docId + "/chunks"))).andExpect(status().isOk())).size())
+        .isGreaterThanOrEqualTo(chunkCount);
+    // La conversación histórica que citó la fuente sigue siendo consultable.
+    assertThat(body(mvc.perform(practice(get("/api/llm/tutor/conversations/" + conversationId + "/messages")))
+        .andExpect(status().isOk())).size()).isGreaterThanOrEqualTo(2);
+
+    // Idempotente: retirarla de nuevo no es error.
+    mvc.perform(cohortTeacher(practice(delete("/api/llm/rag/documents/" + docId)), cohort)).andExpect(status().isNoContent());
+    // Inexistente → 404 con mensaje claro.
+    mvc.perform(cohortTeacher(practice(delete("/api/llm/rag/documents/" + UUID.randomUUID())), cohort)).andExpect(status().isNotFound());
   }
 
   @Test

@@ -39,6 +39,42 @@ class RagDomainRecordsTest {
   }
 
   @Test
+  void retireMarksTheDocumentInactiveKeepingEverythingElse() {
+    var doc = new RagDocument(UUID.randomUUID(), UUID.randomUUID(), "manual.pdf", 1024L, 5, 10, OffsetDateTime.now(), "preview...", true);
+
+    RagDocument retired = doc.retire();
+
+    assertThat(retired.active()).isFalse();
+    assertThat(retired.id()).isEqualTo(doc.id());
+    assertThat(retired.courseCohortId()).isEqualTo(doc.courseCohortId());
+    assertThat(retired.fileName()).isEqualTo(doc.fileName());
+    assertThat(retired.chunkCount()).isEqualTo(doc.chunkCount());
+    assertThat(retired.uploadedAt()).isEqualTo(doc.uploadedAt());
+    assertThat(doc.active()).as("el record original es inmutable").isTrue();
+  }
+
+  @Test
+  void retireIsIdempotent() {
+    var doc = new RagDocument(UUID.randomUUID(), UUID.randomUUID(), "manual.pdf", 1024L, 5, 10, OffsetDateTime.now(), "preview...", true);
+
+    RagDocument once = doc.retire();
+    RagDocument twice = once.retire();
+
+    assertThat(twice).isEqualTo(once);
+    assertThat(twice.active()).isFalse();
+  }
+
+  @Test
+  void belongsToOnlyMatchesItsOwnCohort() {
+    UUID cohort = UUID.randomUUID();
+    var doc = new RagDocument(UUID.randomUUID(), cohort, "manual.pdf", 1024L, 5, 10, OffsetDateTime.now(), "preview...", true);
+
+    assertThat(doc.belongsTo(cohort)).isTrue();
+    assertThat(doc.belongsTo(UUID.randomUUID())).isFalse();
+    assertThat(doc.belongsTo(null)).isFalse();
+  }
+
+  @Test
   void extractedPdfAndChunkHoldValues() {
     var page = new ExtractedPage(1, "Texto extraído");
     var pdf = new ExtractedPdf(1, List.of(page), "Texto extraído");

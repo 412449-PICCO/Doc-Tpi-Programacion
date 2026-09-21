@@ -61,10 +61,13 @@ public class PgVectorStoreAdapter implements VectorStorePort {
     PGvector pgQueryVector = new PGvector(queryVector);
     String inSql = String.join(",", Collections.nCopies(documentIds.size(), "?"));
     // El operador <=> queda en el esquema `llm` (la extensión se crea allí), fuera del search_path por defecto.
-    String sql = "select id, document_id, document_name, page_number, chunk_index, content, "
-        + "(1 - (embedding OPERATOR(llm.<=>) ?)) as similarity from llm.rag_chunks "
-        + "where document_id in (" + inSql + ") and embedding is not null "
-        + "order by embedding OPERATOR(llm.<=>) ? limit ?";
+    // El join con rag_documents.active se aplica dentro de la query (antes del ORDER BY/LIMIT): una
+    // fuente retirada no ocupa lugares del top-K aunque el llamador la haya pedido por id (#672).
+    String sql = "select c.id, c.document_id, c.document_name, c.page_number, c.chunk_index, c.content, "
+        + "(1 - (c.embedding OPERATOR(llm.<=>) ?)) as similarity from llm.rag_chunks c "
+        + "join llm.rag_documents d on d.id = c.document_id and d.active = true "
+        + "where c.document_id in (" + inSql + ") and c.embedding is not null "
+        + "order by c.embedding OPERATOR(llm.<=>) ? limit ?";
 
     List<Object> params = new ArrayList<>();
     params.add(pgQueryVector);

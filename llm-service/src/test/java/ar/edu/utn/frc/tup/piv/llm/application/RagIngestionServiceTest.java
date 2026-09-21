@@ -18,6 +18,7 @@ import ar.edu.utn.frc.tup.piv.llm.domain.rag.ExtractedPdf;
 import ar.edu.utn.frc.tup.piv.llm.domain.rag.ImageDetection;
 import ar.edu.utn.frc.tup.piv.llm.domain.rag.PdfTextExtractionPort;
 import ar.edu.utn.frc.tup.piv.llm.domain.rag.RagDocument;
+import ar.edu.utn.frc.tup.piv.llm.domain.rag.RagDocumentNotFoundException;
 import ar.edu.utn.frc.tup.piv.llm.domain.rag.VectorStorePort;
 import ar.edu.utn.frc.tup.piv.llm.infrastructure.persistence.IdempotencyRepository;
 import ar.edu.utn.frc.tup.piv.llm.infrastructure.persistence.RagDocumentRepository;
@@ -152,13 +153,44 @@ class RagIngestionServiceTest {
   }
 
   @Test
-  void deactivateThrowsWhenTheDocumentDoesNotExist() {
+  void retireThrowsNotFoundWhenTheDocumentDoesNotExist() {
     var documents = mock(RagDocumentRepository.class);
     when(documents.findById(any())).thenReturn(Optional.empty());
     var service = buildService(mock(PdfTextExtractionPort.class), mock(DiagramDetectionPort.class),
         mock(VectorStorePort.class), documents, mock(EmbeddingInvocationService.class));
+    UUID id = UUID.randomUUID();
 
-    assertThatThrownBy(() -> service.deactivate(UUID.randomUUID())).isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> service.retire(id, UUID.randomUUID()))
+        .isInstanceOf(RagDocumentNotFoundException.class)
+        .hasMessageContaining(id.toString());
+    verify(documents, never()).deactivate(any());
+  }
+
+  @Test
+  void retireTreatsADocumentOfAnotherCohortAsNotFound() {
+    var documents = mock(RagDocumentRepository.class);
+    UUID id = UUID.randomUUID();
+    when(documents.findById(id)).thenReturn(Optional.of(sampleDocument(id)));
+    var service = buildService(mock(PdfTextExtractionPort.class), mock(DiagramDetectionPort.class),
+        mock(VectorStorePort.class), documents, mock(EmbeddingInvocationService.class));
+
+    // Misma excepción que "no existe": no se filtra la existencia de material de otra cohorte.
+    assertThatThrownBy(() -> service.retire(id, UUID.randomUUID())).isInstanceOf(RagDocumentNotFoundException.class);
+    verify(documents, never()).deactivate(any());
+  }
+
+  @Test
+  void retireIsIdempotentForAnAlreadyRetiredDocument() {
+    var documents = mock(RagDocumentRepository.class);
+    UUID id = UUID.randomUUID();
+    RagDocument alreadyRetired = sampleDocument(id).retire();
+    when(documents.findById(id)).thenReturn(Optional.of(alreadyRetired));
+    var service = buildService(mock(PdfTextExtractionPort.class), mock(DiagramDetectionPort.class),
+        mock(VectorStorePort.class), documents, mock(EmbeddingInvocationService.class));
+
+    RagDocument result = service.retire(id, alreadyRetired.courseCohortId());
+
+    assertThat(result.active()).isFalse();
     verify(documents, never()).deactivate(any());
   }
 
@@ -186,16 +218,21 @@ class RagIngestionServiceTest {
   }
 
   @Test
-  void deactivateMarksAnExistingDocumentAsInactive() {
+  void retireMarksAnExistingDocumentOfTheCohortAsInactiveWithoutDeletingAnything() {
     var documents = mock(RagDocumentRepository.class);
+    var vectorStore = mock(VectorStorePort.class);
     UUID id = UUID.randomUUID();
-    when(documents.findById(id)).thenReturn(Optional.of(sampleDocument(id)));
+    RagDocument document = sampleDocument(id);
+    when(documents.findById(id)).thenReturn(Optional.of(document));
     var service = buildService(mock(PdfTextExtractionPort.class), mock(DiagramDetectionPort.class),
-        mock(VectorStorePort.class), documents, mock(EmbeddingInvocationService.class));
+        vectorStore, documents, mock(EmbeddingInvocationService.class));
 
-    service.deactivate(id);
+    RagDocument result = service.retire(id, document.courseCohortId());
 
+    assertThat(result.active()).isFalse();
+    assertThat(result.id()).isEqualTo(id);
     verify(documents).deactivate(id);
+    verify(vectorStore, never()).deleteChunks(any());
   }
 
   @Test

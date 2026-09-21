@@ -14,6 +14,7 @@ import ar.edu.utn.frc.tup.piv.llm.domain.rag.DiagramDecodeResult;
 import ar.edu.utn.frc.tup.piv.llm.domain.rag.DocumentChunk;
 import ar.edu.utn.frc.tup.piv.llm.domain.rag.ImageDetection;
 import ar.edu.utn.frc.tup.piv.llm.domain.rag.RagDocument;
+import ar.edu.utn.frc.tup.piv.llm.domain.rag.RagDocumentNotFoundException;
 import ar.edu.utn.frc.tup.piv.llm.security.CallerIdentity;
 import ar.edu.utn.frc.tup.piv.llm.security.CourseAuthorization;
 import ar.edu.utn.frc.tup.piv.llm.security.RagGatewayAuthorization;
@@ -129,20 +130,60 @@ class RagControllerTest {
   }
 
   @Test
-  void authorizesBeforeDeletingADocument() {
+  void authorizesTheTeacherOnTheDocumentCohortBeforeRetiringIt() {
     var ingestion = mock(RagIngestionService.class);
     var authorization = mock(RagGatewayAuthorization.class);
+    var courses = mock(CourseAuthorization.class);
+    var headers = new HttpHeaders();
+    when(authorization.require(headers)).thenReturn(actor);
+    RagDocument document = sampleDocument();
+    when(ingestion.get(document.id())).thenReturn(Optional.of(document));
+    RagController controller = new RagController(ingestion, mock(RagChatService.class), authorization, courses);
+
+    var response = controller.deleteDocument(document.id(), headers);
+
+    assertThat(response.getStatusCode().value()).isEqualTo(204);
+    var order = Mockito.inOrder(authorization, courses, ingestion);
+    order.verify(authorization).require(headers);
+    order.verify(courses).requireTeacher(document.courseCohortId(), actor, headers);
+    order.verify(ingestion).retire(document.id(), document.courseCohortId());
+  }
+
+  @Test
+  void retiringADocumentOfACohortTheActorDoesNotManageLooksLikeNotFound() {
+    var ingestion = mock(RagIngestionService.class);
+    var authorization = mock(RagGatewayAuthorization.class);
+    var courses = mock(CourseAuthorization.class);
+    var headers = new HttpHeaders();
+    when(authorization.require(headers)).thenReturn(actor);
+    RagDocument document = sampleDocument();
+    when(ingestion.get(document.id())).thenReturn(Optional.of(document));
+    Mockito.doThrow(new ResponseStatusException(org.springframework.http.HttpStatus.FORBIDDEN, "El actor no puede administrar este curso"))
+        .when(courses).requireTeacher(document.courseCohortId(), actor, headers);
+    RagController controller = new RagController(ingestion, mock(RagChatService.class), authorization, courses);
+
+    // 404 y no 403: no se filtra la existencia de material de otra cohorte.
+    assertThatThrownBy(() -> controller.deleteDocument(document.id(), headers))
+        .isInstanceOf(RagDocumentNotFoundException.class);
+    verify(ingestion, never()).retire(any(), any());
+  }
+
+  @Test
+  void retiringAnUnknownDocumentIsNotFound() {
+    var ingestion = mock(RagIngestionService.class);
+    var authorization = mock(RagGatewayAuthorization.class);
+    var courses = mock(CourseAuthorization.class);
     var headers = new HttpHeaders();
     when(authorization.require(headers)).thenReturn(actor);
     UUID id = UUID.randomUUID();
-    RagController controller = new RagController(ingestion, mock(RagChatService.class), authorization, mock(CourseAuthorization.class));
+    when(ingestion.get(id)).thenReturn(Optional.empty());
+    RagController controller = new RagController(ingestion, mock(RagChatService.class), authorization, courses);
 
-    var response = controller.deleteDocument(id, headers);
-
-    assertThat(response.getStatusCode().value()).isEqualTo(204);
-    var order = Mockito.inOrder(authorization, ingestion);
-    order.verify(authorization).require(headers);
-    order.verify(ingestion).deactivate(id);
+    assertThatThrownBy(() -> controller.deleteDocument(id, headers))
+        .isInstanceOf(RagDocumentNotFoundException.class)
+        .hasMessageContaining(id.toString());
+    verify(courses, never()).requireTeacher(any(UUID.class), any(CallerIdentity.class), any(HttpHeaders.class));
+    verify(ingestion, never()).retire(any(), any());
   }
 
   @Test

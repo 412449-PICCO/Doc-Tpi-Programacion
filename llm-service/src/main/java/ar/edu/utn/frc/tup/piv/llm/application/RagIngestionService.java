@@ -8,6 +8,7 @@ import ar.edu.utn.frc.tup.piv.llm.domain.rag.ExtractedPdf;
 import ar.edu.utn.frc.tup.piv.llm.domain.rag.ImageDetection;
 import ar.edu.utn.frc.tup.piv.llm.domain.rag.PdfTextExtractionPort;
 import ar.edu.utn.frc.tup.piv.llm.domain.rag.RagDocument;
+import ar.edu.utn.frc.tup.piv.llm.domain.rag.RagDocumentNotFoundException;
 import ar.edu.utn.frc.tup.piv.llm.domain.rag.TextChunker;
 import ar.edu.utn.frc.tup.piv.llm.domain.rag.VectorStorePort;
 import ar.edu.utn.frc.tup.piv.llm.infrastructure.persistence.IdempotencyRepository;
@@ -160,9 +161,20 @@ public class RagIngestionService {
     return documents.findById(id);
   }
 
-  public void deactivate(UUID id) {
-    documents.findById(id).orElseThrow(() -> new IllegalArgumentException("Fuente no encontrada: " + id));
-    documents.deactivate(id);
+  /** Retiro lógico de una fuente (#672, CA5 / Escenario BDD 3 de `h01.md`). Solo se puede retirar
+   * una fuente de la propia cohorte: una de otra cohorte se comporta como inexistente
+   * ({@link RagDocumentNotFoundException} → 404, no 403) para no filtrar existencia. Idempotente:
+   * retirar una ya retirada devuelve el mismo resultado. Nunca borra la fila, sus chunks ni el PDF. */
+  @Transactional
+  public RagDocument retire(UUID id, UUID courseCohortId) {
+    RagDocument document = documents.findById(id)
+        .filter(found -> found.belongsTo(courseCohortId))
+        .orElseThrow(() -> new RagDocumentNotFoundException(id));
+    RagDocument retired = document.retire();
+    if (document.active()) {
+      documents.deactivate(id);
+    }
+    return retired;
   }
 
   public List<DocumentChunk> getChunks(UUID id) {

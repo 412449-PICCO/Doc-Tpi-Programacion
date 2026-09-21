@@ -17,6 +17,15 @@ class ApiExceptionHandlerTest {
     assertThat(handler.conflict(new IllegalStateException("en curso"), request).getStatus()).isEqualTo(409);
   }
 
+  @Test void mapsARetiredOrForeignRagDocumentToNotFound() {
+    java.util.UUID id = java.util.UUID.randomUUID();
+    ProblemDetail problem = handler.ragDocumentNotFound(
+        new ar.edu.utn.frc.tup.piv.llm.domain.rag.RagDocumentNotFoundException(id), request);
+
+    assertThat(problem.getStatus()).isEqualTo(404);
+    assertThat(problem.getDetail()).isEqualTo("Fuente no encontrada: " + id);
+  }
+
   @Test void mapsResponseStatusExceptionToProblemDetailWithStatusDetailAndRequestId() {
     request.addHeader("X-Request-Id", "req-test-401");
     ResponseStatusException unauthorized = new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Falta el permiso requerido");

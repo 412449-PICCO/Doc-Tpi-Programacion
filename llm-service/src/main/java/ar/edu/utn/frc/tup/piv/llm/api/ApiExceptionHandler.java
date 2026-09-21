@@ -68,6 +68,10 @@ public class ApiExceptionHandler {
     p.setProperty("error", "validation_error");
     return p;
   }
+  @ExceptionHandler(ar.edu.utn.frc.tup.piv.llm.domain.rag.RagDocumentNotFoundException.class)
+  ProblemDetail ragDocumentNotFound(ar.edu.utn.frc.tup.piv.llm.domain.rag.RagDocumentNotFoundException exception, HttpServletRequest request) {
+    return problem(HttpStatus.NOT_FOUND, exception.getMessage(), request);
+  }
   @ExceptionHandler(IllegalArgumentException.class)
   ProblemDetail invalid(IllegalArgumentException exception, HttpServletRequest request) { return problem(HttpStatus.UNPROCESSABLE_ENTITY, exception.getMessage(), request); }
   @ExceptionHandler(OptimisticLockException.class)
