@@ -52,7 +52,7 @@ class FlywaySchemaTest {
         UUID adapterId = UUID.randomUUID();
         UUID deploymentId = UUID.randomUUID();
         statement.executeUpdate("insert into llm.model_adapters (id, provider, created_by_user_id) values ('" + adapterId + "', 'test-provider', '" + actorId + "')");
-        statement.executeUpdate("insert into llm.model_deployments (id, adapter_id, model_id, model_version) values ('" + deploymentId + "', '" + adapterId + "', 'test-model', '1')");
+        statement.executeUpdate("insert into llm.model_deployments (id, adapter_id, provider_key, model_id, model_version) values ('" + deploymentId + "', '" + adapterId + "', 'test-provider', 'test-model', '1')");
         UUID firstRunId = UUID.randomUUID();
         UUID secondRunId = UUID.randomUUID();
         statement.executeUpdate("insert into llm.calibration_runs (id, course_id, rubric_version_id, golden_set_version_id, model_deployment_id, reason, created_by_user_id) values ('" + firstRunId + "', '" + courseId + "', '" + rubricVersionId + "', '" + goldenVersionId + "', '" + deploymentId + "', 'MANUAL', '" + actorId + "')");
