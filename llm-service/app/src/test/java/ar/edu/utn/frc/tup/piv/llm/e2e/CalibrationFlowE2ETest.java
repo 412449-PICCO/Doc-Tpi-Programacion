@@ -69,6 +69,7 @@ class CalibrationFlowE2ETest {
         .thenReturn(new CourseMembershipPort.Membership("TEACHER", "ACTIVE"));
 
     MvcResult result = mockMvc.perform(post("/api/llm/courses/" + courseId + "/golden-sets")
+            .header("X-Principal-Type", "service")
             .header("X-Service-Id", "admin-service")
             .header("X-Service-Scopes", "llm.golden-set.manage")
             .header("X-Delegated-User", teacherId.toString())
