@@ -12,31 +12,49 @@ import org.springframework.stereotype.Service;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 
+import ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.CourseGoldenSetRepository;
+
 @Service
 public class CalibrationRunService {
   private final CalibrationRunRepository runs;
   private final CalibrationReproducibilityRepository artifacts;
   private final AuditRepository audit;
   private final ObjectMapper json;
+  private final CourseGoldenSetRepository goldenSets;
   private final SecureRandom random = new SecureRandom();
+
+  public static class IncompleteGoldenSetException extends RuntimeException {
+    public IncompleteGoldenSetException(String message) { super(message); }
+  }
 
   @Autowired
   public CalibrationRunService(CalibrationRunRepository runs,
-      CalibrationReproducibilityRepository artifacts, AuditRepository audit, ObjectMapper json) {
+      CalibrationReproducibilityRepository artifacts, AuditRepository audit, ObjectMapper json,
+      CourseGoldenSetRepository goldenSets) {
     this.runs = runs;
     this.artifacts = artifacts;
     this.audit = audit;
     this.json = json;
+    this.goldenSets = goldenSets;
   }
+
+  public CalibrationRunService(CalibrationRunRepository runs,
+      CalibrationReproducibilityRepository artifacts, AuditRepository audit, ObjectMapper json) {
+    this(runs, artifacts, audit, json, null);
+  }
+
   /** Test/backwards-compatible constructor. Spring uses the ObjectMapper-aware constructor. */
   public CalibrationRunService(CalibrationRunRepository runs,
       CalibrationReproducibilityRepository artifacts, AuditRepository audit) {
-    this(runs, artifacts, audit, new ObjectMapper());
+    this(runs, artifacts, audit, new ObjectMapper(), null);
   }
 
   @Transactional
   public CalibrationRunRepository.Run enqueue(UUID courseId, UUID rubricVersionId, UUID goldenSetVersionId,
       UUID modelDeploymentId, UUID idempotencyKey, CallerIdentity actor) {
+    if (goldenSets != null && goldenSets.countCases(goldenSetVersionId) < 3) {
+      throw new IncompleteGoldenSetException("El Golden Set debe tener al menos tres casos");
+    }
     // Provider SDKs accept a 32-bit seed (Gemini converts it to int internally).
     // Persist only that portable range so a calibration never fails before its first invocation.
     var created = runs.createStability(courseId, rubricVersionId, goldenSetVersionId, modelDeploymentId,

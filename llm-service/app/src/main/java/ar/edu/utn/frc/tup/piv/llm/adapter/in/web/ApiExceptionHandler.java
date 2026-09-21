@@ -19,6 +19,12 @@ public class ApiExceptionHandler {
   ProblemDetail goldenSetSize(GoldenSetSizeException exception, HttpServletRequest request) {
     return problem(HttpStatus.CONFLICT, exception.getMessage(), request);
   }
+  @ExceptionHandler(ar.edu.utn.frc.tup.piv.llm.application.service.CalibrationRunService.IncompleteGoldenSetException.class)
+  ProblemDetail incompleteGoldenSet(ar.edu.utn.frc.tup.piv.llm.application.service.CalibrationRunService.IncompleteGoldenSetException exception, HttpServletRequest request) {
+    ProblemDetail p = problem(HttpStatus.BAD_REQUEST, exception.getMessage(), request);
+    p.setProperty("error", "validation_error");
+    return p;
+  }
   @ExceptionHandler(ar.edu.utn.frc.tup.piv.llm.moderation.application.exception.AppealAlreadyExistsException.class)
   ProblemDetail appealAlreadyExists(ar.edu.utn.frc.tup.piv.llm.moderation.application.exception.AppealAlreadyExistsException exception, HttpServletRequest request) {
     ProblemDetail p = problem(HttpStatus.CONFLICT, "appeal_already_exists", request);

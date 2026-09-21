@@ -22,6 +22,14 @@ class ApiExceptionHandlerCoverageTest {
   }
 
   @Test
+  void incompleteGoldenSetMapsToBadRequest() {
+    var problem = handler.incompleteGoldenSet(new ar.edu.utn.frc.tup.piv.llm.application.service.CalibrationRunService.IncompleteGoldenSetException("incomplete"), request);
+    assertThat(problem.getStatus()).isEqualTo(400);
+    assertThat(problem.getProperties()).containsEntry("error", "validation_error");
+    assertThat(problem.getProperties()).containsEntry("requestId", REQUEST_ID);
+  }
+
+  @Test
   void staleDraftMapsToConflict() {
     assertThat(handler.staleDraft(new OptimisticLockException("cambió"), request).getStatus()).isEqualTo(409);
   }

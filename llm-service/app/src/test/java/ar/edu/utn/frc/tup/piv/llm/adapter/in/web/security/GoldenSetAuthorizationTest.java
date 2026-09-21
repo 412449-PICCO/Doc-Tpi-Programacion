@@ -67,6 +67,16 @@ class GoldenSetAuthorizationTest {
     assertUnauthorized(() -> authorization.requireTemplateManager(headers("gateway-service", "llm:admin", UUID.randomUUID().toString())));
   }
 
+  @Test
+  void requireInstitutionalManagerRequiresAdminRole() {
+    var headers = headers("gateway-service", "llm.institutional-calibration.manage", UUID.randomUUID().toString());
+    assertForbidden(() -> authorization.requireInstitutionalManager(headers));
+    
+    headers.set("X-User-Roles", "USER, ADMIN");
+    var identity = authorization.requireInstitutionalManager(headers);
+    assertThat(identity.serviceId()).isEqualTo("gateway-service");
+  }
+
   private static void assertUnauthorized(org.assertj.core.api.ThrowableAssert.ThrowingCallable callable) {
     assertThatThrownBy(callable)
         .isInstanceOfSatisfying(ResponseStatusException.class,

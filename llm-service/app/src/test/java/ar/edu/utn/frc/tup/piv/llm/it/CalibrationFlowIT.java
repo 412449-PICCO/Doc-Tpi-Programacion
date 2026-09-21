@@ -174,6 +174,60 @@ class CalibrationFlowIT extends AbstractIntegrationIT {
         .andExpect(status().isConflict());
   }
 
+  @Autowired ar.edu.utn.frc.tup.piv.llm.application.service.CalibrationWorkflowService workflow;
+
+  @Test
+  void incompleteGoldenSetIsRejected() throws Exception {
+    provider(200, PERFECT);
+    UUID c = UUID.randomUUID();
+    String gbase = "/api/llm/courses/" + c + "/golden-sets";
+    String gid = body(mvc.perform(asTeacher(post(gbase), c).content("{\"name\":\"B\"}")).andExpect(status().isCreated())).path("id").asText();
+    mvc.perform(asTeacher(post(gbase + "/" + gid + "/cases"), c).content(GoldenSetFlowIT.CASE)).andExpect(status().isCreated());
+    
+    String rid = body(mvc.perform(asTeacher(post("/api/llm/courses/" + c + "/rubrics"), c)
+        .content("{\"templateVersionId\":\"10000000-0000-0000-0000-000000000002\",\"name\":\"R\"}"))
+        .andExpect(status().isCreated())).path("id").asText();
+    mvc.perform(asTeacher(post("/api/llm/courses/" + c + "/rubrics/" + rid + "/publish"), c)).andExpect(status().isNoContent());
+    
+    String reqBody = "{\"rubricVersionId\":\"" + rid + "\",\"goldenSetVersionId\":\"" + gid + "\"}";
+    mvc.perform(asTeacher(post("/api/llm/courses/" + c + "/calibrations"), c)
+        .header("Idempotency-Key", UUID.randomUUID().toString())
+        .content(reqBody))
+        .andExpect(status().isBadRequest())
+        .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.error").value("validation_error"));
+  }
+
+  @Test
+  void expirationByNewRubricKeepsHistoryAndRejectsEvaluations() throws Exception {
+    provider(200, PERFECT);
+    var s = publishedGoldenSetAndRubric();
+    String runId = enqueue(s, UUID.randomUUID());
+    dispatchStabilityGroup();
+    String base = "/api/llm/courses/" + s.course();
+    var preview = body(mvc.perform(asTeacher(post(base + "/calibrations/" + runId + "/activate-preview"), s.course())).andExpect(status().isOk()));
+    mvc.perform(asTeacher(post(base + "/calibrations/" + runId + "/activate"), s.course())
+        .content("{\"previewToken\":\"" + preview.path("previewToken").asText() + "\",\"challengeIds\":[]}")).andExpect(status().isOk());
+    
+    UUID challenge = UUID.randomUUID();
+    jdbc.update("insert into llm.challenge_calibration_assignments(challenge_id, course_id, calibration_run_id) values (?, ?, ?)", challenge, s.course(), UUID.fromString(runId));
+    
+    workflow.queue(UUID.randomUUID(), challenge, UUID.randomUUID());
+    int pending1 = jdbc.queryForObject("select count(*) from llm.pending_evaluations where assignment_challenge_id=?", Integer.class, challenge);
+    assertThat(pending1).isZero();
+    
+    String newRid = body(mvc.perform(asTeacher(post(base + "/rubrics/" + s.rubricId() + "/next-version"), s.course())).andExpect(status().isCreated())).path("id").asText();
+    mvc.perform(asTeacher(post(base + "/rubrics/" + newRid + "/publish"), s.course())).andExpect(status().isNoContent());
+    
+    var run = run(s, runId);
+    assertThat(run.path("state").asText()).isEqualTo("EXPIRED");
+    assertThat(run.path("expirationReason").asText()).isEqualTo("NEW_RUBRIC_VERSION");
+    assertThat(run.path("maeFinal").isNull()).isFalse();
+    
+    workflow.queue(UUID.randomUUID(), challenge, UUID.randomUUID());
+    int pending2 = jdbc.queryForObject("select count(*) from llm.pending_evaluations where assignment_challenge_id=?", Integer.class, challenge);
+    assertThat(pending2).isOne();
+  }
+
   /** Descriptor mínimo para registrar un candidato en los tests (el SPI pide el modelo completo). */
   private static ar.edu.utn.frc.tup.piv.llm.provider.spi.ModelDescriptor descriptorDeModelo(String modelId) {
     return new ar.edu.utn.frc.tup.piv.llm.provider.spi.ModelDescriptor(modelId, modelId, null,

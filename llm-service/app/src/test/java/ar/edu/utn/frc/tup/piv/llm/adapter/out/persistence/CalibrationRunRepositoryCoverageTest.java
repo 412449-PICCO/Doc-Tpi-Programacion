@@ -211,7 +211,7 @@ class CalibrationRunRepositoryCoverageTest {
         null, "PLATFORM", "QUEUED", 0, UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
         null, null, "MANUAL", Instant.now(), null, null, null, null);
     when(jdbc.update(anyString(), any(UUID.class), any(UUID.class), any(UUID.class), any(UUID.class),
-        any(UUID.class), any(UUID.class), any(UUID.class))).thenReturn(1);
+        any(UUID.class), any(), any(UUID.class), any(UUID.class))).thenReturn(1);
     when(jdbc.query(contains("where r.id=?"), any(RowMapper.class), any(UUID.class)))
         .thenAnswer(runRows(expected, 1));
 
@@ -225,9 +225,25 @@ class CalibrationRunRepositoryCoverageTest {
     var jdbc = mock(JdbcTemplate.class);
     var repository = new CalibrationRunRepository(jdbc, json);
     when(jdbc.update(anyString(), any(UUID.class), any(UUID.class), any(UUID.class), any(UUID.class),
-        any(UUID.class), any(UUID.class), any(UUID.class))).thenReturn(0);
+        any(UUID.class), any(), any(UUID.class), any(UUID.class))).thenReturn(0);
     assertThatThrownBy(() -> repository.createPlatform(UUID.randomUUID(), UUID.randomUUID(),
         UUID.randomUUID(), UUID.randomUUID())).isInstanceOf(IllegalStateException.class);
+  }
+
+  @Test void createPlatformReturnsExistingRunWhenIdempotencyKeyMatches() throws SQLException {
+    var jdbc = mock(JdbcTemplate.class);
+    var repository = new CalibrationRunRepository(jdbc, json);
+    CalibrationRunRepository.Run expected = new CalibrationRunRepository.Run(UUID.randomUUID(),
+        null, "PLATFORM", "QUEUED", 0, UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
+        null, null, "MANUAL", Instant.now(), null, null, null, null);
+    UUID key = UUID.randomUUID();
+    when(jdbc.query(contains("r.idempotency_key=?"), any(RowMapper.class), eq(key)))
+        .thenAnswer(runRows(expected, 1));
+
+    CalibrationRunRepository.Run result = repository.createPlatform(expected.rubricVersionId(),
+        expected.goldenSetVersionId(), expected.modelDeploymentId(), key, UUID.randomUUID());
+
+    assertThat(result).isEqualTo(expected);
   }
 
   @Test void claimNextQueuedClaimsTheFirstAvailableRun() throws SQLException {

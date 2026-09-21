@@ -24,8 +24,9 @@ public class RealCalibrationExecutor {
   private final ProviderInvocationGateway gateway; private final ProviderRegistry registry; private final ObjectMapper json; private final CalibrationInferencePolicy policy;
   public RealCalibrationExecutor(CalibrationRunRepository runs, ProviderCredentialRepository usage, ProviderInvocationGateway gateway, ProviderRegistry registry, ObjectMapper json, CalibrationInferencePolicy policy) { this.runs=runs;this.usage=usage;this.gateway=gateway;this.registry=registry;this.json=json;this.policy=policy; }
   public void execute(UUID runId) {
+    CalibrationRunRepository.Execution execution = null;
     try {
-      var execution=runs.execution(runId); List<CalibrationMetrics.CaseScores> all=new ArrayList<>(); int total=execution.cases().size(); int completed=0;
+      execution=runs.execution(runId); List<CalibrationMetrics.CaseScores> all=new ArrayList<>(); int total=execution.cases().size(); int completed=0;
       var credential=usage.get(execution.deployment().credentialId()).filter(value->"ACTIVE".equals(value.state())).orElseThrow(()->new IllegalStateException("La credencial del deployment no está activa"));
       var settings=policy.resolve(registry.required(execution.deployment().providerKey()).descriptor().capabilities(), execution.seed() == null ? 0L : execution.seed());
       String fingerprint=null;
@@ -37,13 +38,22 @@ public class RealCalibrationExecutor {
         all.add(new CalibrationMetrics.CaseScores(item.humanScores(),model)); runs.progress(runId,++completed*100/total);
       }
       var metrics=CalibrationMetrics.assess(all,execution.weights()); runs.recordInference(runId, json.writeValueAsString(settings.auditView()), fingerprint); runs.finish(runId,metrics.passed(),metrics.maeFinal(),metrics.maxIndividualError()); runs.refreshStability(runId);
+      settlePlatformOutcome(execution,metrics.passed());
     } catch (Exception failure) { 
         System.out.println("CALIBRATION FAILED EXCEPTION:");
         failure.printStackTrace();
         var diagnostic=diagnostic(failure); 
         runs.fail(runId,diagnostic.code(),diagnostic.detail()); 
-        runs.refreshStability(runId); 
+        runs.refreshStability(runId);
+        if (execution != null && "PLATFORM".equals(execution.run().stage())) usage.excludeFromCalibrationTarget(execution.deployment().id());
       }
+  }
+  /** T-658: una corrida institucional habilita (o vuelve a dejar en candidato) el deployment. */
+  private void settlePlatformOutcome(CalibrationRunRepository.Execution execution, boolean passed) {
+    if ("PLATFORM".equals(execution.run().stage())) {
+      if (passed) usage.activate(execution.deployment().id());
+      else usage.excludeFromCalibrationTarget(execution.deployment().id());
+    }
   }
   private String prompt(String rubric, CalibrationRunRepository.Case item) {
     return "Actuás como evaluador pedagógico. Evaluá la conversación y el contexto con esta rúbrica:\n%s\nConversación: %s\nContexto: %s\nRespondé exclusivamente JSON, sin Markdown, con las cinco claves AUTONOMY, CLARITY, PROGRESSION, COMPLIANCE y EFFICIENCY. Cada valor debe ser un entero de 0 a 100.".formatted(rubric,item.transcript(),item.challengeContext());

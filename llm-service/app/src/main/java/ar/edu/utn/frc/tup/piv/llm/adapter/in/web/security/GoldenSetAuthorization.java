@@ -17,12 +17,18 @@ public class GoldenSetAuthorization {
   private final String trustedService;
   private final String requiredScope;
   private final String templateRequiredScope;
+  private final String institutionalRequiredScope;
 
   @Autowired
   public GoldenSetAuthorization(@Value("${llm.gateway.trusted-service}") String trustedService,
       @Value("${llm.gateway.required-scope}") String requiredScope,
-      @Value("${llm.gateway.template-required-scope}") String templateRequiredScope) {
-    this.trustedService = trustedService; this.requiredScope = requiredScope; this.templateRequiredScope = templateRequiredScope;
+      @Value("${llm.gateway.template-required-scope}") String templateRequiredScope,
+      @Value("${llm.gateway.institutional-required-scope}") String institutionalRequiredScope) {
+    this.trustedService = trustedService; this.requiredScope = requiredScope; this.templateRequiredScope = templateRequiredScope; this.institutionalRequiredScope = institutionalRequiredScope;
+  }
+
+  public GoldenSetAuthorization(String trustedService, String requiredScope, String templateRequiredScope) {
+    this(trustedService, requiredScope, templateRequiredScope, "llm.institutional-calibration.manage");
   }
 
   /**
@@ -32,6 +38,14 @@ public class GoldenSetAuthorization {
    */
   public GoldenSetAuthorization(String trustedService, String requiredScope) {
     this(trustedService, requiredScope, "llm:evaluator:template:manage");
+  }
+
+  public CallerIdentity requireInstitutionalManager(HttpHeaders headers) {
+    String roles = headers.getFirst("X-User-Roles");
+    if (roles == null || Arrays.stream(roles.split(",")).map(String::trim).noneMatch("ADMIN"::equals)) {
+      throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Requiere rol ADMIN");
+    }
+    return requireScope(headers, institutionalRequiredScope);
   }
 
   public CallerIdentity require(HttpHeaders headers) {

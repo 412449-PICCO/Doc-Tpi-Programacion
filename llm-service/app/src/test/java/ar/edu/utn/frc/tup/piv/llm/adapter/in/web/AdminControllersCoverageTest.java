@@ -253,10 +253,10 @@ class AdminControllersCoverageTest {
     var controller = new InstitutionalCalibrationController(runs, deployments, auth());
     when(runs.profile()).thenReturn(Optional.of(new Profile(UUID.randomUUID(), UUID.randomUUID(), Instant.now())));
     when(deployments.calibrationTarget()).thenReturn(Optional.of(deployment()));
-    when(runs.createPlatform(any(UUID.class), any(UUID.class), any(UUID.class), any(UUID.class)))
+    when(runs.createPlatform(any(UUID.class), any(UUID.class), any(UUID.class), any(UUID.class), any(UUID.class)))
         .thenReturn(run());
 
-    var response = controller.create(headers());
+    var response = controller.create(headers(), UUID.randomUUID());
 
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
   }
@@ -268,7 +268,7 @@ class AdminControllersCoverageTest {
         auth());
     when(runs.profile()).thenReturn(Optional.empty());
 
-    assertThatThrownBy(() -> controller.create(headers()))
+    assertThatThrownBy(() -> controller.create(headers(), UUID.randomUUID()))
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("Configure el perfil institucional");
   }
@@ -281,13 +281,28 @@ class AdminControllersCoverageTest {
     when(runs.profile()).thenReturn(Optional.of(new Profile(UUID.randomUUID(), UUID.randomUUID(), Instant.now())));
     when(deployments.calibrationTarget()).thenReturn(Optional.empty());
 
-    assertThatThrownBy(() -> controller.create(headers()))
+    assertThatThrownBy(() -> controller.create(headers(), UUID.randomUUID()))
         .isInstanceOf(IllegalStateException.class)
-        .hasMessageContaining("Seleccione un modelo candidato");
+        .hasMessageContaining("modelo candidato");
+  }
+
+  @Test
+  void institutionalGetReturnsRunDetail() {
+    var runs = mock(CalibrationRunRepository.class);
+    var controller = new InstitutionalCalibrationController(runs, mock(ProviderCredentialRepository.class),
+        auth());
+    UUID runId = UUID.randomUUID();
+    var theRun = run();
+    when(runs.byId(runId)).thenReturn(Optional.of(new CalibrationRunRepository.Run(runId, theRun.courseId(), "PLATFORM", theRun.state(), theRun.progress(), theRun.rubricVersionId(), theRun.goldenSetVersionId(), theRun.modelDeploymentId(), theRun.maeFinal(), theRun.maxIndividualError(), theRun.reason(), theRun.createdAt(), theRun.finishedAt(), theRun.failureCode(), theRun.failureDetail(), theRun.expirationReason())));
+    when(runs.dimensionErrors(runId)).thenReturn(Map.of());
+
+    var detail = controller.get(runId, headers());
+
+    assertThat(detail.run().id()).isEqualTo(runId);
   }
 
   // ---------------------------------------------------------------------------
-  // RubricTemplateController
+  // ProviderCredentialController
   // ---------------------------------------------------------------------------
 
   @Test
@@ -531,6 +546,7 @@ class AdminControllersCoverageTest {
   private static GoldenSetAuthorization auth() {
     var auth = mock(GoldenSetAuthorization.class);
     when(auth.require(any(HttpHeaders.class))).thenReturn(actor());
+    when(auth.requireInstitutionalManager(any(HttpHeaders.class))).thenReturn(actor());
     when(auth.requireTemplateManager(any(HttpHeaders.class))).thenReturn(actor());
     return auth;
   }

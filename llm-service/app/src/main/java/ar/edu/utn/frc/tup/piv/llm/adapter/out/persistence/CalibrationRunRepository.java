@@ -36,8 +36,17 @@ public class CalibrationRunRepository {
     }
     return jdbc.query(base()+" where r.stability_group_id=? order by r.stability_ordinal",(rs,row)->row(rs),group);
   }
+  /** Compatibilidad: sin key de idempotencia (callers previos). */
   public Run createPlatform(UUID rubric,UUID golden,UUID deployment,UUID actor) {
-    UUID id=UUID.randomUUID(); int n=jdbc.update("insert into llm.calibration_runs(id,rubric_version_id,golden_set_version_id,model_deployment_id,reason,created_by_user_id,stage) select ?,?,?,?,'MANUAL',?,'PLATFORM' where exists(select 1 from llm.rubric_version_v2 v join llm.rubric_families f on f.id=v.family_id where v.id=? and v.state='PUBLISHED' and f.scope='PLATFORM') and exists(select 1 from llm.golden_set_versions v join llm.golden_set_families f on f.id=v.family_id where v.id=? and v.state='PUBLISHED' and f.scope='PLATFORM')",id,rubric,golden,deployment,actor,rubric,golden);
+    return createPlatform(rubric,golden,deployment,null,actor);
+  }
+  /** Corrida institucional deduplicada por Idempotency-Key (el índice único no cubre course_id NULL). */
+  public Run createPlatform(UUID rubric,UUID golden,UUID deployment,UUID key,UUID actor) {
+    if (key != null) {
+      var existing=jdbc.query(base()+" where r.stage='PLATFORM' and r.course_id is null and r.idempotency_key=?",(rs,row)->row(rs),key).stream().findFirst();
+      if (existing.isPresent()) return existing.get();
+    }
+    UUID id=UUID.randomUUID(); int n=jdbc.update("insert into llm.calibration_runs(id,rubric_version_id,golden_set_version_id,model_deployment_id,reason,created_by_user_id,idempotency_key,stage) select ?,?,?,?,'MANUAL',?,?,'PLATFORM' where exists(select 1 from llm.rubric_version_v2 v join llm.rubric_families f on f.id=v.family_id where v.id=? and v.state='PUBLISHED' and f.scope='PLATFORM') and exists(select 1 from llm.golden_set_versions v join llm.golden_set_families f on f.id=v.family_id where v.id=? and v.state='PUBLISHED' and f.scope='PLATFORM')",id,rubric,golden,deployment,actor,key,rubric,golden);
     if(n==0) throw new IllegalStateException("El perfil institucional requiere versiones PLATFORM publicadas"); return byId(id).orElseThrow();
   }
   public Optional<Run> claimNextQueued() { return jdbc.query("with next as (select id from llm.calibration_runs where state='QUEUED' order by created_at for update skip locked limit 1) update llm.calibration_runs r set state='RUNNING',started_at=now() from next where r.id=next.id returning r.id,r.course_id,r.stage::text,r.state::text,r.progress,r.rubric_version_id,r.golden_set_version_id,r.model_deployment_id,r.mae_final,r.max_individual_error,r.reason,r.created_at,r.finished_at,r.failure_code,r.failure_detail,r.expiration_reason",(rs,row)->row(rs)).stream().findFirst(); }
@@ -46,6 +55,24 @@ public class CalibrationRunRepository {
   public List<Run> list(UUID course) { return jdbc.query(base()+" where r.course_id=? order by r.created_at desc",(rs,row)->row(rs),course); }
   public List<StabilityGroup> stabilityGroups(UUID course) { var groups=jdbc.query("select id,state,mae_spread,created_at,finished_at from llm.calibration_stability_groups where course_id=? order by created_at desc",(rs,row)->new StabilityGroup(rs.getObject(1,UUID.class),rs.getString(2),rs.getBigDecimal(3),rs.getTimestamp(4).toInstant(),rs.getTimestamp(5)==null?null:rs.getTimestamp(5).toInstant(),List.of()),course); return groups.stream().map(g->new StabilityGroup(g.id(),g.state(),g.maeSpread(),g.createdAt(),g.finishedAt(),jdbc.query(base()+" where r.stability_group_id=? order by r.stability_ordinal",(rs,row)->row(rs),g.id()))).toList(); }
   public List<Run> listPlatform() { return jdbc.query(base()+" where r.stage='PLATFORM' order by r.created_at desc",(rs,row)->row(rs)); }
+  /** Promedio de error por dimensión de una corrida (claves del JSON en mayúscula o minúscula). */
+  public Map<Dimension, BigDecimal> dimensionErrors(UUID runId) {
+    var rows=jdbc.query("select dimension_errors::text from llm.calibration_case_results where calibration_run_id=? order by golden_set_case_id",(rs,row)->parse(rs.getString(1)),runId);
+    if (rows.isEmpty()) return Map.of();
+    Map<Dimension,BigDecimal> totals=new EnumMap<>(Dimension.class);
+    for (var d:Dimension.values()) totals.put(d,BigDecimal.ZERO);
+    for (var node:rows) {
+      for (var d:Dimension.values()) {
+        JsonNode value=node.get(d.name());
+        if (value == null) value=node.get(d.name().toLowerCase());
+        totals.put(d,totals.get(d).add(BigDecimal.valueOf(value == null ? 0 : value.asInt())));
+      }
+    }
+    BigDecimal count=BigDecimal.valueOf(rows.size());
+    Map<Dimension,BigDecimal> averages=new EnumMap<>(Dimension.class);
+    for (var d:Dimension.values()) averages.put(d,totals.get(d).divide(count,4,java.math.RoundingMode.HALF_UP));
+    return Map.copyOf(averages);
+  }
   public Optional<Profile> profile() { return jdbc.query("select golden_set_version_id,rubric_version_id,configured_at from llm.institutional_calibration_profiles",(rs,row)->new Profile(rs.getObject(1,UUID.class),rs.getObject(2,UUID.class),rs.getTimestamp(3).toInstant())).stream().findFirst(); }
   public void profile(UUID golden,UUID rubric,UUID actor) {
     Integer valid=jdbc.queryForObject("select (exists(select 1 from llm.golden_set_versions v join llm.golden_set_families f on f.id=v.family_id where v.id=? and v.state='PUBLISHED' and f.scope='PLATFORM') and exists(select 1 from llm.rubric_version_v2 v join llm.rubric_families f on f.id=v.family_id where v.id=? and v.state='PUBLISHED' and f.scope='PLATFORM'))::int",Integer.class,golden,rubric);
