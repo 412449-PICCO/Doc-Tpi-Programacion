@@ -12,3 +12,7 @@ llm:
   courses:
     base-url: http://localhost:4300
     service-token: integration-test-token
+  credentials:
+    # Base64 de una clave AES de 32 bytes — la consume CalibrationFlowE2ETest, que no pasa por
+    # AbstractIntegrationIT (que la inyecta vía @SpringBootTest(properties=...)).
+    master-key: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
