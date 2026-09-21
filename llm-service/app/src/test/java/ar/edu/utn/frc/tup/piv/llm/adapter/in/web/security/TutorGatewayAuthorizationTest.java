@@ -37,7 +37,7 @@ class TutorGatewayAuthorizationTest {
     HttpHeaders headers = validHeaders(UUID.randomUUID().toString());
     headers.set("X-Service-Id", "evil-service");
 
-    assertForbidden(() -> authorization.require(headers));
+    assertUnauthorized(() -> authorization.require(headers));
   }
 
   @Test
@@ -45,7 +45,7 @@ class TutorGatewayAuthorizationTest {
     HttpHeaders headers = validHeaders(UUID.randomUUID().toString());
     headers.remove("X-Service-Scopes");
 
-    assertForbidden(() -> authorization.require(headers));
+    assertUnauthorized(() -> authorization.require(headers));
   }
 
   @Test
@@ -53,7 +53,7 @@ class TutorGatewayAuthorizationTest {
     HttpHeaders headers = validHeaders(UUID.randomUUID().toString());
     headers.set("X-Service-Scopes", "something-else");
 
-    assertForbidden(() -> authorization.require(headers));
+    assertUnauthorized(() -> authorization.require(headers));
   }
 
   @Test
@@ -64,6 +64,12 @@ class TutorGatewayAuthorizationTest {
   @Test
   void rejectsAnInvalidDelegatedUserUuid() {
     assertForbidden(() -> authorization.require(validHeaders("not-a-uuid")));
+  }
+
+  private static void assertUnauthorized(org.assertj.core.api.ThrowableAssert.ThrowingCallable callable) {
+    assertThatThrownBy(callable)
+        .isInstanceOfSatisfying(ResponseStatusException.class,
+            exception -> assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED));
   }
 
   private static void assertForbidden(org.assertj.core.api.ThrowableAssert.ThrowingCallable callable) {

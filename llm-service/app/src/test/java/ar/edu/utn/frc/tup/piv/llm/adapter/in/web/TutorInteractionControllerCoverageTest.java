@@ -51,14 +51,14 @@ class TutorInteractionControllerCoverageTest {
     UUID courseCohortId = UUID.randomUUID();
     UUID learnerId = UUID.randomUUID();
     var body = new TutorInteractionController.Request(attemptId, challengeId, courseCohortId, learnerId,
-        "¿cómo ordeno?", "medium", "return x;");
+        "¿cómo ordeno?", "medium", null, "return x;");
 
     controller.create(body, UUID.randomUUID(), headers);
 
     var captor = ArgumentCaptor.forClass(TutorInteractionService.Request.class);
     verify(service).respond(captor.capture(), any(), eq(actor));
     assertThat(captor.getValue()).isEqualTo(new TutorInteractionService.Request(attemptId, challengeId,
-        courseCohortId, learnerId, "¿cómo ordeno?", "medium", "return x;"));
+        courseCohortId, learnerId, "¿cómo ordeno?", "medium", null, "return x;"));
   }
 
   private TutorInteractionController controllerWithValidIdentity() {

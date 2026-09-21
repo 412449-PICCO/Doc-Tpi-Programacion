@@ -1,11 +1,14 @@
 package ar.edu.utn.frc.tup.piv.llm.application.service;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.FunctionModelConfigRepository;
+import ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.ModelDeploymentRepository;
 import ar.edu.utn.frc.tup.piv.llm.application.port.out.ModelInvocationPort;
+import ar.edu.utn.frc.tup.piv.llm.domain.ai.ModelDeploymentSummary;
 import ar.edu.utn.frc.tup.piv.llm.domain.ai.ModelFunction;
 import ar.edu.utn.frc.tup.piv.llm.domain.ai.ModelInvocationResult;
 import java.time.Duration;
@@ -19,7 +22,7 @@ class ModelInvocationServiceCoverageTest {
   void refusesToInvokeADisabledFunction() {
     var configs = configs(false);
     Adapter adapter = request -> new ModelInvocationResult("ok", "fake", "fake-socratic-v1");
-    var service = new ModelInvocationService(configs, adapter);
+    var service = new ModelInvocationService(configs, mock(ModelDeploymentRepository.class), adapter);
 
     assertThatThrownBy(() -> service.invoke(ModelFunction.TUTOR, "system", "pregunta", Duration.ofSeconds(1)))
         .isInstanceOf(IllegalStateException.class)
@@ -58,7 +61,10 @@ class ModelInvocationServiceCoverageTest {
   }
 
   private ModelInvocationService serviceWithAdapter(Adapter adapter) {
-    return new ModelInvocationService(configs(true), adapter);
+    var deployments = mock(ModelDeploymentRepository.class);
+    when(deployments.byId(any())).thenReturn(Optional.of(
+        new ModelDeploymentSummary(UUID.randomUUID(), "fake", "fake-socratic-v1", "1.0", "ENABLED")));
+    return new ModelInvocationService(configs(true), deployments, adapter);
   }
 
   @FunctionalInterface

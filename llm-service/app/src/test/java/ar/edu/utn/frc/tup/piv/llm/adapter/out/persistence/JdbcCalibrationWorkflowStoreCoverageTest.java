@@ -30,8 +30,8 @@ class JdbcCalibrationWorkflowStoreCoverageTest {
         .thenReturn(1);
 
     assertThat(store.transition(id, CalibrationState.QUEUED, CalibrationState.RUNNING)).isTrue();
-    verify(jdbc).update(contains("state=?"), eq("RUNNING"), eq("RUNNING"), eq("RUNNING"),
-        eq(id), eq("QUEUED"));
+    verify(jdbc).update(contains("update llm.calibration_runs set state"), eq("RUNNING"),
+        eq("RUNNING"), eq("RUNNING"), eq(id), eq("QUEUED"));
   }
 
   @Test void reportsARejectedTransition() {

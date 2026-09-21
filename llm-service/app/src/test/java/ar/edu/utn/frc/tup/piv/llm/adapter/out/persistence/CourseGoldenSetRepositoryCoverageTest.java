@@ -10,10 +10,10 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.CourseGoldenSetRepository.GoldenSetCaseInput;
-import ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.CourseGoldenSetRepository.CourseGoldenSetVersion;
-import ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.CourseGoldenSetRepository.CourseGoldenSetView;
-import ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.CourseGoldenSetRepository.GoldenSetDetail;
+import ar.edu.utn.frc.tup.piv.llm.domain.goldenset.GoldenSetCaseInput;
+import ar.edu.utn.frc.tup.piv.llm.domain.goldenset.CourseGoldenSetVersion;
+import ar.edu.utn.frc.tup.piv.llm.domain.goldenset.CourseGoldenSetView;
+import ar.edu.utn.frc.tup.piv.llm.domain.goldenset.GoldenSetDetail;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.sql.ResultSet;
 import java.sql.SQLException;

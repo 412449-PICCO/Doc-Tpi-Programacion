@@ -7,8 +7,8 @@ import static org.mockito.Mockito.when;
 import ar.edu.utn.frc.tup.piv.llm.adapter.in.web.security.CourseAuthorization;
 import ar.edu.utn.frc.tup.piv.llm.adapter.in.web.security.GoldenSetAuthorization;
 import ar.edu.utn.frc.tup.piv.llm.adapter.out.ai.ProviderRegistry;
-import ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.ModelDeploymentRepository;
-import ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.ModelDeploymentRepository.ModelDeploymentSummary;
+import ar.edu.utn.frc.tup.piv.llm.application.service.ModelDeploymentService;
+import ar.edu.utn.frc.tup.piv.llm.domain.ai.ModelDeploymentSummary;
 import ar.edu.utn.frc.tup.piv.llm.application.model.CallerIdentity;
 import ar.edu.utn.frc.tup.piv.llm.provider.spi.ProviderCapabilities;
 import ar.edu.utn.frc.tup.piv.llm.provider.spi.ProviderDescriptor;
@@ -21,15 +21,15 @@ class ModelDeploymentControllerCoverageTest {
 
   @Test
   void listsAdapterCatalogWithTheirActiveDeployments() {
-    var repository = mock(ModelDeploymentRepository.class);
+    var service = mock(ModelDeploymentService.class);
     var auth = mock(GoldenSetAuthorization.class);
     var courses = mock(CourseAuthorization.class);
     var providers = mock(ProviderRegistry.class);
-    var controller = new ModelDeploymentController(repository, auth, courses, providers);
+    var controller = new ModelDeploymentController(service, auth, courses, providers);
     HttpHeaders headers = new HttpHeaders();
     when(auth.require(headers)).thenReturn(new CallerIdentity("admin-service", UUID.randomUUID(), null, null));
 
-    when(repository.listEnabledDeployments()).thenReturn(List.of(
+    when(service.listEnabledDeployments()).thenReturn(List.of(
         new ModelDeploymentSummary(UUID.randomUUID(), "openai", "gpt-4o-mini", "2024-07-18", "ENABLED"),
         new ModelDeploymentSummary(UUID.randomUUID(), "anthropic", "claude-3-5-sonnet", "2025-01-01", "ENABLED")));
     when(providers.descriptors()).thenReturn(List.of(

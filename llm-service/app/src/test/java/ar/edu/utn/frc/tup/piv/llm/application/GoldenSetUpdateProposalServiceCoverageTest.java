@@ -1,7 +1,7 @@
 package ar.edu.utn.frc.tup.piv.llm.application.service;
 
 import ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.GoldenSetUpdateProposalRepository;
-import ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.GoldenSetUpdateProposalRepository.GoldenSetUpdateProposal;
+import ar.edu.utn.frc.tup.piv.llm.domain.goldenset.GoldenSetUpdateProposal;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;

@@ -16,9 +16,9 @@ class ModelResponseSchemaCoverageTest {
 
   @Test
   void rejectsFunctionsWithoutASchemaYet() {
-    assertThatThrownBy(() -> schema.validate(ModelFunction.EVALUATOR, "ok"))
+    assertThatThrownBy(() -> schema.validate(ModelFunction.MODERATOR, "ok"))
         .isInstanceOf(UnsupportedOperationException.class)
-        .hasMessageContaining("EVALUATOR");
+        .hasMessageContaining("MODERATOR");
   }
 
   @Test

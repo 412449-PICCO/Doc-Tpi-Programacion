@@ -39,17 +39,17 @@ class GoldenSetAuthorizationTest {
 
   @Test
   void requireRejectsAnUntrustedService() {
-    assertForbidden(() -> authorization.require(headers("other", "llm:admin", UUID.randomUUID().toString())));
+    assertUnauthorized(() -> authorization.require(headers("other", "llm:admin", UUID.randomUUID().toString())));
   }
 
   @Test
   void requireRejectsMissingScopes() {
-    assertForbidden(() -> authorization.require(headers("gateway-service", null, UUID.randomUUID().toString())));
+    assertUnauthorized(() -> authorization.require(headers("gateway-service", null, UUID.randomUUID().toString())));
   }
 
   @Test
   void requireRejectsAWrongScope() {
-    assertForbidden(() -> authorization.require(headers("gateway-service", "llm:templates", UUID.randomUUID().toString())));
+    assertUnauthorized(() -> authorization.require(headers("gateway-service", "llm:templates", UUID.randomUUID().toString())));
   }
 
   @Test
@@ -64,7 +64,13 @@ class GoldenSetAuthorizationTest {
 
   @Test
   void requireTemplateManagerRejectsTheEvaluationScope() {
-    assertForbidden(() -> authorization.requireTemplateManager(headers("gateway-service", "llm:admin", UUID.randomUUID().toString())));
+    assertUnauthorized(() -> authorization.requireTemplateManager(headers("gateway-service", "llm:admin", UUID.randomUUID().toString())));
+  }
+
+  private static void assertUnauthorized(org.assertj.core.api.ThrowableAssert.ThrowingCallable callable) {
+    assertThatThrownBy(callable)
+        .isInstanceOfSatisfying(ResponseStatusException.class,
+            exception -> assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED));
   }
 
   private static void assertForbidden(org.assertj.core.api.ThrowableAssert.ThrowingCallable callable) {

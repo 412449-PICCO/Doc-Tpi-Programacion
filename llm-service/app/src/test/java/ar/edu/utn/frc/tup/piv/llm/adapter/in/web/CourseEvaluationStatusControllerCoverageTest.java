@@ -6,7 +6,9 @@ import static org.mockito.Mockito.when;
 
 import ar.edu.utn.frc.tup.piv.llm.adapter.in.web.security.CourseAuthorization;
 import ar.edu.utn.frc.tup.piv.llm.adapter.in.web.security.GoldenSetAuthorization;
-import ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.CourseEvaluationStatusRepository;
+import ar.edu.utn.frc.tup.piv.llm.application.service.CourseEvaluationStatusService;
+import ar.edu.utn.frc.tup.piv.llm.domain.evaluation.ChallengeAssignment;
+import ar.edu.utn.frc.tup.piv.llm.domain.evaluation.PendingEvaluation;
 import ar.edu.utn.frc.tup.piv.llm.application.model.CallerIdentity;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -21,13 +23,13 @@ class CourseEvaluationStatusControllerCoverageTest {
 
   @Test
   void exposesTheChallengeCalibrationAssignments() {
-    var status = mock(CourseEvaluationStatusRepository.class);
+    var status = mock(CourseEvaluationStatusService.class);
     var identity = mock(GoldenSetAuthorization.class);
     var courses = mock(CourseAuthorization.class);
     var controller = new CourseEvaluationStatusController(status, identity, courses);
     UUID courseId = UUID.randomUUID();
     when(identity.require(headers)).thenReturn(actor);
-    var assignment = new CourseEvaluationStatusRepository.ChallengeAssignment(
+    var assignment = new ChallengeAssignment(
         UUID.randomUUID(), UUID.randomUUID(), OffsetDateTime.now());
     when(status.assignments(courseId)).thenReturn(List.of(assignment));
 
@@ -38,13 +40,13 @@ class CourseEvaluationStatusControllerCoverageTest {
 
   @Test
   void exposesThePendingEvaluations() {
-    var status = mock(CourseEvaluationStatusRepository.class);
+    var status = mock(CourseEvaluationStatusService.class);
     var identity = mock(GoldenSetAuthorization.class);
     var courses = mock(CourseAuthorization.class);
     var controller = new CourseEvaluationStatusController(status, identity, courses);
     UUID courseId = UUID.randomUUID();
     when(identity.require(headers)).thenReturn(actor);
-    var pending = new CourseEvaluationStatusRepository.PendingEvaluation(UUID.randomUUID(),
+    var pending = new PendingEvaluation(UUID.randomUUID(),
         UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), "QUEUED", "sin calibración", OffsetDateTime.now());
     when(status.pendingEvaluations(courseId)).thenReturn(List.of(pending));
 
@@ -55,7 +57,7 @@ class CourseEvaluationStatusControllerCoverageTest {
 
   @Test
   void activeCalibrationIsNullWhenThereIsNoCalibration() {
-    var status = mock(CourseEvaluationStatusRepository.class);
+    var status = mock(CourseEvaluationStatusService.class);
     var identity = mock(GoldenSetAuthorization.class);
     var courses = mock(CourseAuthorization.class);
     var controller = new CourseEvaluationStatusController(status, identity, courses);

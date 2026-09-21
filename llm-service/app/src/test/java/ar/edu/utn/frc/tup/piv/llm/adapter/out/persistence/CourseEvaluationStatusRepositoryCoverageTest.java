@@ -6,6 +6,9 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import ar.edu.utn.frc.tup.piv.llm.domain.evaluation.ActiveCalibration;
+import ar.edu.utn.frc.tup.piv.llm.domain.evaluation.ChallengeAssignment;
+import ar.edu.utn.frc.tup.piv.llm.domain.evaluation.PendingEvaluation;
 import java.sql.ResultSet;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -23,7 +26,7 @@ class CourseEvaluationStatusRepositoryCoverageTest {
     UUID calibrationRunId = UUID.randomUUID();
     OffsetDateTime activatedAt = OffsetDateTime.now();
     when(jdbc.query(anyString(), any(RowMapper.class), any())).thenAnswer(invocation -> {
-      RowMapper<CourseEvaluationStatusRepository.ActiveCalibration> mapper = invocation.getArgument(1);
+      RowMapper<ActiveCalibration> mapper = invocation.getArgument(1);
       ResultSet rs = mock(ResultSet.class);
       when(rs.getObject("course_id", UUID.class)).thenReturn(courseId);
       when(rs.getObject("calibration_run_id", UUID.class)).thenReturn(calibrationRunId);
@@ -35,7 +38,7 @@ class CourseEvaluationStatusRepositoryCoverageTest {
     var result = repository.activeCalibration(courseId);
 
     assertThat(result)
-        .contains(new CourseEvaluationStatusRepository.ActiveCalibration(courseId, calibrationRunId, activatedAt));
+        .contains(new ActiveCalibration(courseId, calibrationRunId, activatedAt));
   }
 
   @Test
@@ -54,7 +57,7 @@ class CourseEvaluationStatusRepositoryCoverageTest {
     UUID calibrationRunId = UUID.randomUUID();
     OffsetDateTime lockedAt = OffsetDateTime.now();
     when(jdbc.query(anyString(), any(RowMapper.class), any())).thenAnswer(invocation -> {
-      RowMapper<CourseEvaluationStatusRepository.ChallengeAssignment> mapper = invocation.getArgument(1);
+      RowMapper<ChallengeAssignment> mapper = invocation.getArgument(1);
       ResultSet rs = mock(ResultSet.class);
       when(rs.getObject("challenge_id", UUID.class)).thenReturn(challengeId);
       when(rs.getObject("calibration_run_id", UUID.class)).thenReturn(calibrationRunId);
@@ -73,7 +76,7 @@ class CourseEvaluationStatusRepositoryCoverageTest {
   void anUnlockedAssignmentReportsFalse() {
     var jdbc = mock(JdbcTemplate.class);
     when(jdbc.query(anyString(), any(RowMapper.class), any())).thenAnswer(invocation -> {
-      RowMapper<CourseEvaluationStatusRepository.ChallengeAssignment> mapper = invocation.getArgument(1);
+      RowMapper<ChallengeAssignment> mapper = invocation.getArgument(1);
       ResultSet rs = mock(ResultSet.class);
       when(rs.getObject("challenge_id", UUID.class)).thenReturn(UUID.randomUUID());
       when(rs.getObject("calibration_run_id", UUID.class)).thenReturn(UUID.randomUUID());
@@ -94,7 +97,7 @@ class CourseEvaluationStatusRepositoryCoverageTest {
     UUID calibrationRunId = UUID.randomUUID();
     OffsetDateTime queuedAt = OffsetDateTime.now();
     when(jdbc.query(anyString(), any(RowMapper.class), any())).thenAnswer(invocation -> {
-      RowMapper<CourseEvaluationStatusRepository.PendingEvaluation> mapper = invocation.getArgument(1);
+      RowMapper<PendingEvaluation> mapper = invocation.getArgument(1);
       ResultSet rs = mock(ResultSet.class);
       when(rs.getObject("id", UUID.class)).thenReturn(id);
       when(rs.getObject("attempt_id", UUID.class)).thenReturn(attemptId);

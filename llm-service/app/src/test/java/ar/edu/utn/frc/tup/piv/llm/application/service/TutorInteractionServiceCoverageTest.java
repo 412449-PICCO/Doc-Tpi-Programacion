@@ -17,7 +17,11 @@ import ar.edu.utn.frc.tup.piv.llm.domain.ai.InvalidModelResponseException;
 import ar.edu.utn.frc.tup.piv.llm.domain.ai.ModelFunction;
 import ar.edu.utn.frc.tup.piv.llm.domain.ai.ModelInvocationResult;
 import ar.edu.utn.frc.tup.piv.llm.domain.ai.ModelTimeoutException;
+import ar.edu.utn.frc.tup.piv.llm.domain.tutor.Conversation;
+import ar.edu.utn.frc.tup.piv.llm.domain.tutor.ConversationRepository;
+import ar.edu.utn.frc.tup.piv.llm.domain.tutor.MessageRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -100,8 +104,8 @@ class TutorInteractionServiceCoverageTest {
     var models = mock(ModelInvocationService.class);
     var idempotency = mock(IdempotencyRepository.class);
     when(idempotency.replay(anyString(), any(), any(), anyString()))
-        .thenReturn(Optional.of(mapper.valueToTree(new TutorInteractionService.Response("pista previa", "completed"))));
-    var service = new TutorInteractionService(models, idempotency, mock(AuditRepository.class), mapper, 1000);
+        .thenReturn(Optional.of(mapper.valueToTree(new TutorInteractionService.Response("pista previa", "completed", null))));
+    var service = conversationless(models, idempotency);
 
     var response = service.respond(request("¿me ayudás?", "low"), UUID.randomUUID(), actor);
 
@@ -116,7 +120,7 @@ class TutorInteractionServiceCoverageTest {
     var idempotency = mock(IdempotencyRepository.class);
     when(idempotency.replay(anyString(), any(), any(), anyString()))
         .thenReturn(Optional.of(mapper.createArrayNode()));
-    var service = new TutorInteractionService(models, idempotency, mock(AuditRepository.class), mapper, 1000);
+    var service = conversationless(models, idempotency);
 
     assertThatThrownBy(() -> service.respond(request("¿me ayudás?", "low"), UUID.randomUUID(), actor))
         .isInstanceOf(IllegalStateException.class)
@@ -126,7 +130,19 @@ class TutorInteractionServiceCoverageTest {
   private TutorInteractionService service(ModelInvocationService models) {
     var idempotency = mock(IdempotencyRepository.class);
     when(idempotency.replay(anyString(), any(), any(), anyString())).thenReturn(Optional.empty());
-    return new TutorInteractionService(models, idempotency, mock(AuditRepository.class), mapper, 1000);
+    var conversations = mock(ConversationRepository.class);
+    when(conversations.save(any())).thenReturn(Conversation.nueva(UUID.randomUUID(), UUID.randomUUID(),
+        UUID.randomUUID(), "Desafío"));
+    var messages = mock(MessageRepository.class);
+    when(messages.findByConversationId(any())).thenReturn(List.of());
+    return new TutorInteractionService(models, idempotency, mock(AuditRepository.class), conversations, messages,
+        mapper, 1000);
+  }
+
+  /** Variante para los casos de replay: las conversaciones no se tocan, así que basta con mocks secos. */
+  private TutorInteractionService conversationless(ModelInvocationService models, IdempotencyRepository idempotency) {
+    return new TutorInteractionService(models, idempotency, mock(AuditRepository.class),
+        mock(ConversationRepository.class), mock(MessageRepository.class), mapper, 1000);
   }
 
   private TutorInteractionService.Request request(String message, String riskLevel) {

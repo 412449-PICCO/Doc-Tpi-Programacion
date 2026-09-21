@@ -1,6 +1,7 @@
 package ar.edu.utn.frc.tup.piv.llm.application.service;
 
 import ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.ChallengeCalibrationAssignmentRepository;
+import ar.edu.utn.frc.tup.piv.llm.domain.evaluation.CalibrationMigrationPreview;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -16,7 +17,7 @@ class CalibrationActivationPreviewServiceTest {
     UUID course = UUID.randomUUID(), next = UUID.randomUUID();
     UUID migrable = UUID.randomUUID(), locked = UUID.randomUUID();
     when(repository.preview(course, next))
-        .thenReturn(new ChallengeCalibrationAssignmentRepository.Preview(List.of(migrable), List.of(locked)));
+        .thenReturn(new CalibrationMigrationPreview(List.of(migrable), List.of(locked)));
 
     var preview = service.preview(course, next);
 

@@ -1,6 +1,7 @@
 package ar.edu.utn.frc.tup.piv.llm.adapter.in.web;
 
 import ar.edu.utn.frc.tup.piv.llm.application.service.*;
+import ar.edu.utn.frc.tup.piv.llm.application.service.gateway.GatewayExecutor;
 import ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.*;
 import ar.edu.utn.frc.tup.piv.llm.adapter.in.web.security.*;
 import ar.edu.utn.frc.tup.piv.llm.adapter.out.ai.*;
@@ -31,6 +32,7 @@ class ControllersFastCoverageTest {
     @MockBean private EvaluatorModelEvents evaluatorModelEvents;
     @MockBean private GoldenSetAuthorization goldenSetAuthorization;
     @MockBean private CourseAuthorization courseAuthorization;
+    @MockBean private GatewayExecutor gatewayExecutor;
 
     @Test
     void testEndpoints() throws Exception {

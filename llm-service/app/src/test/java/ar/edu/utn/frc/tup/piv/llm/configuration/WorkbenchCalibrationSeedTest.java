@@ -11,8 +11,8 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.CourseGoldenSetRepository.CourseGoldenSetView;
-import ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.CourseGoldenSetRepository.CourseGoldenSetVersion;
+import ar.edu.utn.frc.tup.piv.llm.domain.goldenset.CourseGoldenSetView;
+import ar.edu.utn.frc.tup.piv.llm.domain.goldenset.CourseGoldenSetVersion;
 import ar.edu.utn.frc.tup.piv.llm.application.service.CourseGoldenSetService;
 import ar.edu.utn.frc.tup.piv.llm.application.service.RubricDraftService;
 import ar.edu.utn.frc.tup.piv.llm.application.service.RubricDraftService.RubricVersion;

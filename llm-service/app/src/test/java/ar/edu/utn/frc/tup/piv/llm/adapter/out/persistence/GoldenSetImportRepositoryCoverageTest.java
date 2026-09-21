@@ -8,8 +8,8 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.GoldenSetImportRepository.ImportBatch;
-import ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.GoldenSetImportRepository.ImportRow;
+import ar.edu.utn.frc.tup.piv.llm.domain.goldenset.ImportBatch;
+import ar.edu.utn.frc.tup.piv.llm.domain.goldenset.ImportRow;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.sql.ResultSet;

@@ -8,8 +8,10 @@ class ModelFunctionCoverageTest {
   @Test
   void declaresEveryProductFunctionWithARootName() {
     assertThat(ModelFunction.values())
-        .containsExactly(ModelFunction.TUTOR, ModelFunction.EVALUATOR, ModelFunction.MODERATOR, ModelFunction.GENERATOR);
+        .containsExactly(ModelFunction.TUTOR, ModelFunction.EVALUATOR, ModelFunction.MODERATOR,
+            ModelFunction.GENERATOR, ModelFunction.EMBEDDING);
     assertThat(ModelFunction.TUTOR.name()).isEqualTo("TUTOR");
     assertThat(ModelFunction.valueOf("EVALUATOR")).isEqualTo(ModelFunction.EVALUATOR);
+    assertThat(ModelFunction.valueOf("EMBEDDING")).isEqualTo(ModelFunction.EMBEDDING);
   }
 }

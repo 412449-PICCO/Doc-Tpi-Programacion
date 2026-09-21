@@ -1,10 +1,11 @@
 package ar.edu.utn.frc.tup.piv.llm.application.service;
 
 import ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.CourseGoldenSetRepository;
-import ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.CourseGoldenSetRepository.GoldenSetCaseDetail;
-import ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.CourseGoldenSetRepository.GoldenSetCaseInput;
-import ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.CourseGoldenSetRepository.GoldenSetCaseSummary;
-import ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.CourseGoldenSetRepository.GoldenSetDetail;
+import ar.edu.utn.frc.tup.piv.llm.domain.goldenset.CourseGoldenSetVersion;
+import ar.edu.utn.frc.tup.piv.llm.domain.goldenset.GoldenSetCaseDetail;
+import ar.edu.utn.frc.tup.piv.llm.domain.goldenset.GoldenSetCaseInput;
+import ar.edu.utn.frc.tup.piv.llm.domain.goldenset.GoldenSetCaseSummary;
+import ar.edu.utn.frc.tup.piv.llm.domain.goldenset.GoldenSetDetail;
 import ar.edu.utn.frc.tup.piv.llm.application.model.CallerIdentity;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
@@ -38,7 +39,7 @@ class CourseGoldenSetServiceCoverageTest {
     var repository = mock(CourseGoldenSetRepository.class);
     var service = new CourseGoldenSetService(repository);
     UUID course = UUID.randomUUID(), base = UUID.randomUUID(), id = UUID.randomUUID(), family = UUID.randomUUID();
-    var copy = new CourseGoldenSetRepository.CourseGoldenSetVersion(id, family, 1, "DRAFT", base);
+    var copy = new CourseGoldenSetVersion(id, family, 1, "DRAFT", base);
     when(repository.copyPublishedPlatformVersion(course, base, actor.delegatedUserId())).thenReturn(Optional.of(copy));
     assertThat(service.copyFromPublishedBase(course, base, actor)).isEqualTo(copy);
   }
@@ -78,7 +79,7 @@ class CourseGoldenSetServiceCoverageTest {
     var repository = mock(CourseGoldenSetRepository.class);
     var service = new CourseGoldenSetService(repository);
     UUID course = UUID.randomUUID(), id = UUID.randomUUID(), family = UUID.randomUUID();
-    var created = new CourseGoldenSetRepository.CourseGoldenSetVersion(id, family, 1, "DRAFT", null);
+    var created = new CourseGoldenSetVersion(id, family, 1, "DRAFT", null);
     when(repository.createDraft(course, "Golden", actor.delegatedUserId())).thenReturn(created);
     assertThat(service.createDraft(course, " Golden ", actor)).isEqualTo(created);
   }
@@ -238,8 +239,8 @@ class CourseGoldenSetServiceCoverageTest {
   }
 
   @Test void instantiateCaseDetailRecord() throws Exception {
-    var detail = new GoldenSetCaseDetail(UUID.randomUUID(), 1, mapper.readTree("[]"), mapper.readTree("{}"));
-    assertThat(detail.order()).isEqualTo(1);
+    var detail = new GoldenSetCaseDetail(UUID.randomUUID(), mapper.readTree("[]"), mapper.readTree("{}"),
+        mapper.readTree("{}"));
     assertThat(detail.transcript().isArray()).isTrue();
   }
 

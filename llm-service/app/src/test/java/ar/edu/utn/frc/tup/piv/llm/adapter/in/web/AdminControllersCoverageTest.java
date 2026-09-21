@@ -12,14 +12,14 @@ import ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.CalibrationRunReposito
 import ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.CalibrationRunRepository.Profile;
 import ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.CalibrationRunRepository.Run;
 import ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.CalibrationRunRepository.StabilityGroup;
-import ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.ChallengeCalibrationAssignmentRepository.Preview;
-import ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.CourseEvaluationStatusRepository;
-import ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.CourseEvaluationStatusRepository.ActiveCalibration;
-import ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.CourseGoldenSetRepository.CourseGoldenSetVersion;
-import ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.CourseGoldenSetRepository.CourseGoldenSetView;
-import ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.CourseGoldenSetRepository.GoldenSetCaseInput;
-import ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.CourseGoldenSetRepository.GoldenSetCaseSummary;
-import ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.CourseGoldenSetRepository.GoldenSetDetail;
+import ar.edu.utn.frc.tup.piv.llm.domain.evaluation.CalibrationMigrationPreview;
+import ar.edu.utn.frc.tup.piv.llm.domain.evaluation.ActiveCalibration;
+import ar.edu.utn.frc.tup.piv.llm.application.service.CourseEvaluationStatusService;
+import ar.edu.utn.frc.tup.piv.llm.domain.goldenset.CourseGoldenSetVersion;
+import ar.edu.utn.frc.tup.piv.llm.domain.goldenset.CourseGoldenSetView;
+import ar.edu.utn.frc.tup.piv.llm.domain.goldenset.GoldenSetCaseInput;
+import ar.edu.utn.frc.tup.piv.llm.domain.goldenset.GoldenSetCaseSummary;
+import ar.edu.utn.frc.tup.piv.llm.domain.goldenset.GoldenSetDetail;
 import ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.ProviderCredentialRepository;
 import ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.ProviderCredentialRepository.Deployment;
 import ar.edu.utn.frc.tup.piv.llm.application.model.CallerIdentity;
@@ -407,11 +407,11 @@ class AdminControllersCoverageTest {
     var previews = mock(CalibrationActivationPreviewService.class);
     var confirmations = mock(CalibrationMigrationConfirmation.class);
     var controller = new CalibrationActivationController(previews, confirmations,
-        mock(CalibrationActivationService.class), mock(CourseEvaluationStatusRepository.class), auth(), courseAuth());
+        mock(CalibrationActivationService.class), mock(CourseEvaluationStatusService.class), auth(), courseAuth());
     UUID migrable = UUID.randomUUID();
     UUID locked = UUID.randomUUID();
     when(previews.preview(any(UUID.class), any(UUID.class)))
-        .thenReturn(new Preview(List.of(migrable), List.of(locked)));
+        .thenReturn(new CalibrationMigrationPreview(List.of(migrable), List.of(locked)));
     when(confirmations.issue(any(UUID.class), any(UUID.class), any(Set.class))).thenReturn("tok-abc");
 
     var preview = controller.preview(UUID.randomUUID(), UUID.randomUUID(), headers());
@@ -424,7 +424,7 @@ class AdminControllersCoverageTest {
   @Test
   void activationActivateReturnsTheActiveCalibration() {
     var activation = mock(CalibrationActivationService.class);
-    var status = mock(CourseEvaluationStatusRepository.class);
+    var status = mock(CourseEvaluationStatusService.class);
     var controller = new CalibrationActivationController(mock(CalibrationActivationPreviewService.class),
         mock(CalibrationMigrationConfirmation.class), activation, status, auth(), courseAuth());
     UUID course = UUID.randomUUID();
@@ -441,7 +441,7 @@ class AdminControllersCoverageTest {
 
   @Test
   void activationActivateThrowsWhenTheCalibrationCannotBeRecovered() {
-    var status = mock(CourseEvaluationStatusRepository.class);
+    var status = mock(CourseEvaluationStatusService.class);
     var controller = new CalibrationActivationController(mock(CalibrationActivationPreviewService.class),
         mock(CalibrationMigrationConfirmation.class), mock(CalibrationActivationService.class), status, auth(),
         courseAuth());
