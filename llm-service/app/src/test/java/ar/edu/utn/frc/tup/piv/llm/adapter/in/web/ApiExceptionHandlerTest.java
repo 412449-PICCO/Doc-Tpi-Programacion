@@ -16,6 +16,9 @@ class ApiExceptionHandlerTest {
   @Test void mapsValidationAndIdempotencyConflictsToExpectedProblemStatuses() {
     assertThat(handler.invalid(new IllegalArgumentException("inválido"), request).getStatus()).isEqualTo(422);
     assertThat(handler.conflict(new IllegalStateException("en curso"), request).getStatus()).isEqualTo(409);
+    var skillProblem = handler.unknownSkillKey(new EvaluatorSkillsController.UnknownSkillKeyException("unknown"), request);
+    assertThat(skillProblem.getStatus()).isEqualTo(422);
+    assertThat(skillProblem.getProperties()).containsEntry("code", "UNKNOWN_SKILL_KEY");
   }
 
   @Test void mapsResponseStatusExceptionToProblemDetailWithStatusDetailAndRequestId() {

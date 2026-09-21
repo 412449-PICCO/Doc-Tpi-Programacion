@@ -84,8 +84,14 @@ public class ApiExceptionHandler {
   }
   @ExceptionHandler(org.springframework.web.bind.MethodArgumentNotValidException.class)
   ProblemDetail validationException(org.springframework.web.bind.MethodArgumentNotValidException exception, HttpServletRequest request) {
-    ProblemDetail p = problem(HttpStatus.BAD_REQUEST, "Los datos enviados no son válidos o contienen campos obligatorios ausentes.", request);
+    ProblemDetail p = problem(HttpStatus.BAD_REQUEST, "Los datos enviados no son vǭlidos o contienen campos obligatorios ausentes.", request);
     p.setProperty("error", "validation_error");
+    return p;
+  }
+  @ExceptionHandler(EvaluatorSkillsController.UnknownSkillKeyException.class)
+  ProblemDetail unknownSkillKey(EvaluatorSkillsController.UnknownSkillKeyException exception, HttpServletRequest request) {
+    ProblemDetail p = problem(HttpStatus.UNPROCESSABLE_ENTITY, exception.getMessage(), request);
+    p.setProperty("code", "UNKNOWN_SKILL_KEY");
     return p;
   }
   @ExceptionHandler(IllegalArgumentException.class)

@@ -21,6 +21,8 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -283,5 +285,88 @@ class RealCalibrationExecutorTest {
         .execute(runId);
 
     verify(runs).fail(eq(runId), eq("CALIBRATION_EXECUTION_FAILED"), anyString());
+  }
+
+  @Test
+  void execute_modularCustomFlow_injectsActiveSkillsAndUserPromptAndParsesDynamicScores() {
+    var runs = mock(CalibrationRunRepository.class);
+    var usage = mock(ProviderCredentialRepository.class);
+    var gateway = mock(ProviderInvocationGateway.class);
+    var registry = mock(ProviderRegistry.class);
+    var skillRepository = mock(ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.EvaluatorSkillRepository.class);
+    UUID runId = UUID.randomUUID();
+    UUID courseId = UUID.randomUUID();
+    UUID deploymentId = UUID.randomUUID();
+    UUID credentialId = UUID.randomUUID();
+    UUID caseId = UUID.randomUUID();
+    var executor = new RealCalibrationExecutor(runs, usage, gateway, registry, json, new CalibrationInferencePolicy(), skillRepository);
+
+    CalibrationRunRepository.Run run = new CalibrationRunRepository.Run(runId, courseId, "COURSE", "RUNNING", 0, UUID.randomUUID(), UUID.randomUUID(), deploymentId, null, null, "MANUAL", java.time.Instant.now(), null, null, null, null);
+    CalibrationRunRepository.Deployment deployment = new CalibrationRunRepository.Deployment(deploymentId, credentialId, "openai-compatible", "gpt-4o-mini");
+
+    var aiAdapter = adapter(); when(registry.required("openai-compatible")).thenReturn(aiAdapter);
+    var credential = activeCredential(credentialId);
+    when(usage.get(credentialId)).thenReturn(Optional.of(credential));
+
+    com.fasterxml.jackson.databind.node.ArrayNode transcript = json.createArrayNode();
+    com.fasterxml.jackson.databind.node.ObjectNode context = json.createObjectNode();
+    Map<String, Integer> dynamicHuman = Map.of("code_quality", 80, "test_runner", 90);
+    CalibrationRunRepository.Case c = new CalibrationRunRepository.Case(caseId, transcript, context, Map.of(), dynamicHuman);
+
+    List<String> dimensionKeys = List.of("code_quality", "test_runner");
+    Map<String, Integer> dynamicWeights = Map.of("code_quality", 60, "test_runner", 40);
+
+    CalibrationRunRepository.Execution execution = new CalibrationRunRepository.Execution(
+        run, deployment, Map.of(), "RÃºbrica modular", List.of(c), 0L,
+        "MODULAR_CUSTOM", "Enfocarse en buenas prÃ¡cticas de clean code",
+        dimensionKeys, dynamicWeights
+    );
+    when(runs.execution(runId)).thenReturn(execution);
+
+    ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.EvaluatorSkillRepository.EvaluatorSkill activeSkill = new ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.EvaluatorSkillRepository.EvaluatorSkill(
+        "code_quality", "Revisor de Calidad", "Inspecciona cÃ³digo", "STATIC_ANALYSIS",
+        "Evaluar legibilidad y modularidad estricta.", true
+    );
+    when(skillRepository.findActiveByCourse(courseId)).thenReturn(List.of(activeSkill));
+
+    when(gateway.invoke(any(), eq("gpt-4o-mini"), anyString(), any(), any()))
+        .thenReturn(new ProviderReply("```json\n{\"code_quality\": 85, \"test_runner\": 90}\n```", 120, 60, "fp-2"));
+
+    executor.execute(runId);
+
+    verify(skillRepository).findActiveByCourse(courseId);
+
+    org.mockito.ArgumentCaptor<String> promptCaptor = org.mockito.ArgumentCaptor.forClass(String.class);
+    verify(gateway).invoke(any(), eq("gpt-4o-mini"), promptCaptor.capture(), any(), any());
+    String sentPrompt = promptCaptor.getValue();
+    assertThat(sentPrompt).contains("INSTRUCCIONES DOCENTE:\nEnfocarse en buenas prÃ¡cticas de clean code");
+    assertThat(sentPrompt).contains("HABILIDADES TÃ‰CNICAS ACTIVADAS PARA EL ANÃLISIS:");
+    assertThat(sentPrompt).contains("[Revisor de Calidad]: Evaluar legibilidad y modularidad estricta.");
+    assertThat(sentPrompt).contains("RÃºbrica modular");
+
+    verify(runs).saveCaseModular(eq(runId), eq(c), eq(Map.of("code_quality", 85, "test_runner", 90)), eq(dynamicWeights));
+    verify(runs).finish(eq(runId), eq(true), any(java.math.BigDecimal.class), anyInt());
+    verify(runs).refreshStability(runId);
+  }
+
+  @Test
+  void parseScoresModular_validatesKeysAndNumberRanges() {
+    var executor = new RealCalibrationExecutor(null, null, null, null, json, null, null);
+    List<String> keys = List.of("dim1", "dim2");
+
+    Map<String, Integer> scores = executor.parseScoresModular("{\"dim1\": 75, \"dim2\": 100}", keys);
+    assertThat(scores).containsEntry("dim1", 75).containsEntry("dim2", 100);
+
+    assertThatThrownBy(() -> executor.parseScoresModular("{\"dim1\": 75}", keys))
+        .isInstanceOf(IllegalArgumentException.class);
+
+    assertThatThrownBy(() -> executor.parseScoresModular("{\"dim1\": -1, \"dim2\": 50}", keys))
+        .isInstanceOf(IllegalArgumentException.class);
+
+    assertThatThrownBy(() -> executor.parseScoresModular("{\"dim1\": 101, \"dim2\": 50}", keys))
+        .isInstanceOf(IllegalArgumentException.class);
+
+    assertThatThrownBy(() -> executor.parseScoresModular("{\"dim1\": \"not-a-number\", \"dim2\": 50}", keys))
+        .isInstanceOf(IllegalArgumentException.class);
   }
 }

@@ -82,12 +82,55 @@ public class CalibrationRunRepository {
   public Execution execution(UUID id) {
     Run run=byId(id).filter(x->"RUNNING".equals(x.state())).orElseThrow(()->new IllegalStateException("La corrida no está disponible"));
     Deployment deployment=jdbc.query("select d.id,d.credential_id,c.provider_key,d.model_id from llm.model_deployments d join llm.provider_credentials c on c.id=d.credential_id where d.id=? and c.state='ACTIVE'",(rs,row)->new Deployment(rs.getObject(1,UUID.class),rs.getObject(2,UUID.class),rs.getString(3),rs.getString(4)),run.modelDeploymentId()).stream().findFirst().orElseThrow(()->new IllegalStateException("El candidato no tiene credencial activa"));
-    Map<Dimension,Integer> weights=new EnumMap<>(Dimension.class); StringBuilder rubric=new StringBuilder(); jdbc.query("select dimension_key,label,criterion,anchors::text,weight from llm.rubric_dimension_v2 where rubric_version_id=? order by dimension_key",rs->{var dimension=Dimension.valueOf(rs.getString(1));weights.put(dimension,rs.getBigDecimal(5).intValueExact());rubric.append(dimension).append(" (peso ").append(rs.getBigDecimal(5)).append("): ").append(rs.getString(3)).append(" Anclas: ").append(rs.getString(4)).append('\n');},run.rubricVersionId());
-    var cases=jdbc.query("select id,transcript::text,challenge_context::text,reference_scores::text from llm.golden_set_cases where golden_set_version_id=? order by case_order",(rs,row)->new Case(rs.getObject(1,UUID.class),parse(rs.getString(2)),parse(rs.getString(3)),scores(parse(rs.getString(4)))),run.goldenSetVersionId());
+    var rubricMeta=jdbc.query("select rubric_kind, user_prompt from llm.rubric_version_v2 where id=?",(rs,row)->Map.entry(
+        rs.getString("rubric_kind")!=null?rs.getString("rubric_kind"):"DEFAULT_INSTITUTIONAL",
+        rs.getString("user_prompt")!=null?rs.getString("user_prompt"):""
+    ),run.rubricVersionId()).stream().findFirst().orElse(Map.entry("DEFAULT_INSTITUTIONAL",""));
+    String rubricKind=rubricMeta.getKey(); String userPrompt=rubricMeta.getValue();
+    Map<Dimension,Integer> weights=new EnumMap<>(Dimension.class);
+    Map<String,Integer> dynamicWeights=new java.util.LinkedHashMap<>();
+    List<String> dimensionKeys=new java.util.ArrayList<>();
+    StringBuilder rubric=new StringBuilder();
+    if("MODULAR_CUSTOM".equalsIgnoreCase(rubricKind)){
+      jdbc.query("select dimension_key,label,criterion,anchors::text,weight from llm.rubric_custom_dimensions where rubric_version_id=? order by display_order, dimension_key",rs->{
+        String key=rs.getString(1); int weight=rs.getBigDecimal(5).intValueExact();
+        dynamicWeights.put(key,weight); dimensionKeys.add(key);
+        rubric.append(key).append(" (").append(rs.getString(2)).append(", peso ").append(rs.getBigDecimal(5)).append("): ").append(rs.getString(3)).append(" Anclas: ").append(rs.getString(4)).append('\n');
+      },run.rubricVersionId());
+    } else {
+      jdbc.query("select dimension_key,label,criterion,anchors::text,weight from llm.rubric_dimension_v2 where rubric_version_id=? order by dimension_key",rs->{
+        var dimension=Dimension.valueOf(rs.getString(1));
+        weights.put(dimension,rs.getBigDecimal(5).intValueExact());
+        dynamicWeights.put(dimension.name(),rs.getBigDecimal(5).intValueExact());
+        dimensionKeys.add(dimension.name());
+        rubric.append(dimension).append(" (peso ").append(rs.getBigDecimal(5)).append("): ").append(rs.getString(3)).append(" Anclas: ").append(rs.getString(4)).append('\n');
+      },run.rubricVersionId());
+    }
+    var cases=jdbc.query("select id,transcript::text,challenge_context::text,reference_scores::text from llm.golden_set_cases where golden_set_version_id=? order by case_order",(rs,row)->{
+      JsonNode refScoresNode=parse(rs.getString(4));
+      Map<String,Integer> dynScores=new java.util.LinkedHashMap<>();
+      refScoresNode.fieldNames().forEachRemaining(fn->dynScores.put(fn,refScoresNode.path(fn).asInt(-1)));
+      Map<Dimension,Integer> stdScores="MODULAR_CUSTOM".equalsIgnoreCase(rubricKind)?Map.of():scores(refScoresNode);
+      return new Case(rs.getObject(1,UUID.class),parse(rs.getString(2)),parse(rs.getString(3)),stdScores,Map.copyOf(dynScores));
+    },run.goldenSetVersionId());
     Long seed=jdbc.query("select calibration_seed from llm.calibration_runs where id=?",(rs,row)->rs.getObject(1,Long.class),id).stream().filter(java.util.Objects::nonNull).findFirst().orElse(null);
-    if(cases.isEmpty())throw new IllegalStateException("El Golden Set publicado no contiene casos"); return new Execution(run,deployment,Map.copyOf(weights),rubric.toString(),List.copyOf(cases),seed);
+    if(cases.isEmpty())throw new IllegalStateException("El Golden Set publicado no contiene casos");
+    return new Execution(run,deployment,Map.copyOf(weights),rubric.toString(),List.copyOf(cases),seed,rubricKind,userPrompt,List.copyOf(dimensionKeys),Map.copyOf(dynamicWeights));
   }
   public void saveCase(UUID run,Case c,Map<Dimension,Integer> model,Map<Dimension,Integer> weights) { BigDecimal human=finalScore(c.humanScores(),weights), calculated=finalScore(model,weights); Map<Dimension,Integer> errors=new EnumMap<>(Dimension.class); for(var d:Dimension.values())errors.put(d,Math.abs(c.humanScores().get(d)-model.get(d))); jdbc.update("insert into llm.calibration_case_results(calibration_run_id,golden_set_case_id,model_scores,human_final_score,model_final_score,dimension_errors,final_error,output_artifact) values(?,?,cast(? as jsonb),?,?,cast(? as jsonb),?,cast(? as jsonb)) on conflict(calibration_run_id,golden_set_case_id) do nothing",run,c.id(),write(scoresNode(model)),human,calculated,write(scoresNode(errors)),human.subtract(calculated).abs(),write(scoresNode(model))); }
+  public void saveCaseModular(UUID run,Case c,Map<String,Integer> model,Map<String,Integer> weights) {
+    BigDecimal human=finalScoreModular(c.dynamicHumanScores(),weights), calculated=finalScoreModular(model,weights);
+    Map<String,Integer> errors=new java.util.LinkedHashMap<>();
+    for(var k:weights.keySet()){
+      int hVal=c.dynamicHumanScores().getOrDefault(k,0);
+      int mVal=model.getOrDefault(k,0);
+      errors.put(k,Math.abs(hVal-mVal));
+    }
+    var modelNode=json.createObjectNode(); model.forEach(modelNode::put);
+    var errorsNode=json.createObjectNode(); errors.forEach(errorsNode::put);
+    jdbc.update("insert into llm.calibration_case_results(calibration_run_id,golden_set_case_id,model_scores,human_final_score,model_final_score,dimension_errors,final_error,output_artifact) values(?,?,cast(? as jsonb),?,?,cast(? as jsonb),?,cast(? as jsonb)) on conflict(calibration_run_id,golden_set_case_id) do nothing",
+        run,c.id(),write(modelNode),human,calculated,write(errorsNode),human.subtract(calculated).abs(),write(modelNode));
+  }
   public void progress(UUID id,int value){jdbc.update("update llm.calibration_runs set progress=? where id=? and state='RUNNING'",value,id);}
   public void recordInference(UUID id, String policy, String fingerprint) { jdbc.update("update llm.calibration_runs set inference_policy=cast(? as jsonb),provider_fingerprint=? where id=?",policy,fingerprint,id); }
   public void finish(UUID id,boolean pass,BigDecimal mae,int max){jdbc.update("update llm.calibration_runs set state=cast(? as llm.calibration_state),progress=100,mae_final=?,max_individual_error=?,finished_at=now() where id=? and state='RUNNING'",pass?"PASSED":"FAILED",mae,max,id);}
@@ -101,14 +144,15 @@ public class CalibrationRunRepository {
   private JsonNode parse(String s){try{return json.readTree(s);}catch(Exception e){throw new IllegalStateException("Datos de calibración inválidos",e);}}
   private Map<Dimension,Integer> scores(JsonNode node){Map<Dimension,Integer> result=new EnumMap<>(Dimension.class);for(var d:Dimension.values())result.put(d,node.path(d.name()).asInt(-1));return Map.copyOf(result);}
   private BigDecimal finalScore(Map<Dimension,Integer> scores,Map<Dimension,Integer> weights){BigDecimal result=BigDecimal.ZERO;for(var d:Dimension.values())result=result.add(BigDecimal.valueOf(scores.get(d)).multiply(BigDecimal.valueOf(weights.get(d))).movePointLeft(2));return result;}
+  private BigDecimal finalScoreModular(Map<String,Integer> scores,Map<String,Integer> weights){BigDecimal result=BigDecimal.ZERO;if(weights==null||weights.isEmpty())return result;for(var entry:weights.entrySet()){int s=scores.getOrDefault(entry.getKey(),0);result=result.add(BigDecimal.valueOf(s).multiply(BigDecimal.valueOf(entry.getValue())).movePointLeft(2));}return result;}
   private JsonNode scoresNode(Map<Dimension,Integer> scores){var node=json.createObjectNode();scores.forEach((d,v)->node.put(d.name(),v));return node;}
   private String write(JsonNode n){try{return json.writeValueAsString(n);}catch(Exception e){throw new IllegalStateException(e);}}
   public record Run(UUID id,UUID courseId,String stage,String state,int progress,UUID rubricVersionId,UUID goldenSetVersionId,UUID modelDeploymentId,BigDecimal maeFinal,Integer maxIndividualError,String reason,java.time.Instant createdAt,java.time.Instant finishedAt,String failureCode,String failureDetail,String expirationReason){public Run(UUID id,String state,int progress){this(id,null,"COURSE",state,progress,null,null,null,null,null,"MANUAL",java.time.Instant.now(),null,null,null,null);}}
   public record Profile(UUID goldenSetVersionId,UUID rubricVersionId,java.time.Instant configuredAt){}
   public record StabilityGroup(UUID id,String state,BigDecimal maeSpread,java.time.Instant createdAt,java.time.Instant finishedAt,List<Run> runs){}
   public record Deployment(UUID id,UUID credentialId,String providerKey,String modelId){}
-  public record Case(UUID id,JsonNode transcript,JsonNode challengeContext,Map<Dimension,Integer> humanScores){}
-  public record Execution(Run run,Deployment deployment,Map<Dimension,Integer> weights,String rubric,List<Case> cases,Long seed){}
+  public record Case(UUID id,JsonNode transcript,JsonNode challengeContext,Map<Dimension,Integer> humanScores,Map<String,Integer> dynamicHumanScores){public Case(UUID id,JsonNode transcript,JsonNode challengeContext,Map<Dimension,Integer> humanScores){this(id,transcript,challengeContext,humanScores,Map.of());}}
+  public record Execution(Run run,Deployment deployment,Map<Dimension,Integer> weights,String rubric,List<Case> cases,Long seed,String rubricKind,String userPrompt,List<String> dimensionKeys,Map<String,Integer> dynamicWeights){public Execution(Run run,Deployment deployment,Map<Dimension,Integer> weights,String rubric,List<Case> cases,Long seed){this(run,deployment,weights,rubric,cases,seed,"DEFAULT_INSTITUTIONAL",null,List.of("AUTONOMY","CLARITY","PROGRESSION","COMPLIANCE","EFFICIENCY"),Map.of());}public UUID courseId(){return run!=null?run.courseId():null;}}
 
   /**
    * Devuelve la corrida como record de dominio; lo usan el runner de evaluación, el módulo shadow y

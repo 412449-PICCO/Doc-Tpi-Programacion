@@ -43,6 +43,20 @@ class CalibrationMetricsTest {
         .isInstanceOf(IllegalArgumentException.class).hasMessage("Weights must total 100");
   }
 
+  @Test void assessDynamic_evaluatesCustomDimensionsCorrectly() {
+    var human = List.of(Map.of("code_quality", 80, "test_runner", 90));
+    var model = List.of(Map.of("code_quality", 75, "test_runner", 85));
+    var weights = Map.of("code_quality", 60, "test_runner", 40);
+
+    var result = CalibrationMetrics.assessDynamic(human, model, weights);
+    // humanFinal = 80*0.6 + 90*0.4 = 48 + 36 = 84
+    // modelFinal = 75*0.6 + 85*0.4 = 45 + 34 = 79
+    // error = |84 - 79| = 5.0000, maxIndividualError = 5
+    assertThat(result.maeFinal()).isEqualByComparingTo(new BigDecimal("5.0000"));
+    assertThat(result.maxIndividualError()).isEqualTo(5);
+    assertThat(result.passed()).isTrue();
+  }
+
   private CalibrationMetrics.CaseScores caseScores(int human, int model) {
     return new CalibrationMetrics.CaseScores(Map.of(AUTONOMY, human, CLARITY, human, PROGRESSION, human, COMPLIANCE, human, EFFICIENCY, human), Map.of(AUTONOMY, model, CLARITY, model, PROGRESSION, model, COMPLIANCE, model, EFFICIENCY, model));
   }
