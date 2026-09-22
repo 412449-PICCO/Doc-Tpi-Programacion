@@ -129,7 +129,7 @@ class ArchitectureTest {
         .and().haveNameNotMatching(".*(ProviderCredentialController|InstitutionalCalibrationController"
             + "|CalibrationActivationController|CalibrationRunController|CourseEvaluationStatusController"
             + "|CourseGoldenSetController|GoldenSetImportController|GoldenSetUpdateProposalController"
-            + "|ModelAssignmentController|ModelDeploymentController).*")
+            + "|ModelAssignmentController|ModelDeploymentController|EvaluatorSkillsController).*")
         .should().dependOnClassesThat().resideInAnyPackage("..adapter.out.persistence..");
     rule.check(classes);
   }
