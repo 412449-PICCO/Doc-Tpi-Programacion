@@ -390,83 +390,6 @@ class RubricVersionRepositoryCoverageTest {
   }
 
   @Test
-  void listMapsModularVersionsWithTheirCustomDimensions() {
-    var jdbc = mock(JdbcTemplate.class);
-    var repository = new RubricVersionRepository(jdbc, new ObjectMapper());
-    UUID id = UUID.randomUUID();
-    when(jdbc.query(contains("order by v.name, v.version_no desc"), any(RowMapper.class), any(UUID.class)))
-        .thenAnswer(rowsOf(r -> {
-          when(r.getObject("id", UUID.class)).thenReturn(id);
-          when(r.getObject("family_id", UUID.class)).thenReturn(UUID.randomUUID());
-          when(r.getInt("version_no")).thenReturn(1);
-          when(r.getString("name")).thenReturn("Rúbrica modular");
-          when(r.getString("state")).thenReturn("DRAFT");
-          when(r.getLong("revision")).thenReturn(1L);
-          when(r.getObject("template_origin_version_id", UUID.class)).thenReturn(null);
-          when(r.getString("rubric_kind")).thenReturn("MODULAR_CUSTOM");
-          when(r.getString("user_prompt")).thenReturn("Priorizar pruebas");
-        }));
-    when(jdbc.query(contains("from llm.rubric_custom_dimensions where"), any(RowMapper.class), any(UUID.class)))
-        .thenAnswer(rowsOf(r -> {
-          when(r.getString("dimension_key")).thenReturn("algoritmos");
-          when(r.getString("label")).thenReturn("Algoritmos");
-          when(r.getString("criterion")).thenReturn("Criterio");
-          when(r.getString("anchors")).thenReturn(ANCHORS_JSON);
-          when(r.getObject("weight", BigDecimal.class)).thenReturn(BigDecimal.valueOf(100));
-        }));
-
-    List<RubricVersion> result = repository.list(UUID.randomUUID());
-
-    assertThat(result).hasSize(1);
-    assertThat(result.get(0).rubricKind()).isEqualTo("MODULAR_CUSTOM");
-    assertThat(result.get(0).userPrompt()).isEqualTo("Priorizar pruebas");
-    assertThat(result.get(0).customDimensions()).hasSize(1);
-    assertThat(result.get(0).customDimensions().get(0).key()).isEqualTo("algoritmos");
-    assertThat(result.get(0).dimensions()).isEmpty();
-  }
-
-  @Test
-  void customDimensionsOfDraftMapsRows() {
-    var jdbc = mock(JdbcTemplate.class);
-    var repository = new RubricVersionRepository(jdbc, new ObjectMapper());
-    when(jdbc.query(contains("from llm.rubric_custom_dimensions d"), any(RowMapper.class), any(UUID.class), any(UUID.class)))
-        .thenAnswer(rowsOf(r -> {
-          when(r.getString("dimension_key")).thenReturn("pruebas");
-          when(r.getString("label")).thenReturn("Pruebas");
-          when(r.getString("criterion")).thenReturn("Criterio");
-          when(r.getString("anchors")).thenReturn(ANCHORS_JSON);
-          when(r.getObject("weight", BigDecimal.class)).thenReturn(BigDecimal.valueOf(40));
-        }));
-
-    List<DimensionCustomInput> result = repository.customDimensionsOfDraft(UUID.randomUUID(), UUID.randomUUID());
-
-    assertThat(result).hasSize(1);
-    assertThat(result.get(0).key()).isEqualTo("pruebas");
-    assertThat(result.get(0).weight()).isEqualByComparingTo(BigDecimal.valueOf(40));
-  }
-
-  @Test
-  void replaceCustomDimensionsDeletesAndInsertsEachDimension() {
-    var jdbc = mock(JdbcTemplate.class);
-    var repository = new RubricVersionRepository(jdbc, new ObjectMapper());
-    when(jdbc.update(anyString(), any(Object[].class))).thenReturn(1);
-
-    repository.replaceCustomDimensions(UUID.randomUUID(), List.of(customDimensionInput(), customDimensionInput()));
-
-    verify(jdbc, times(3)).update(anyString(), any(Object[].class));
-  }
-
-  @Test
-  void updateRubricKindAndPromptUpdatesTheDraft() {
-    var jdbc = mock(JdbcTemplate.class);
-    var repository = new RubricVersionRepository(jdbc, new ObjectMapper());
-
-    repository.updateRubricKindAndPrompt(UUID.randomUUID(), UUID.randomUUID(), "MODULAR_CUSTOM", "Guía");
-
-    verify(jdbc).update(anyString(), any(Object[].class));
-  }
-
-  @Test
   void listFailsOnCorruptedStoredAnchors() {
     var jdbc = mock(JdbcTemplate.class);
     var repository = new RubricVersionRepository(jdbc, new ObjectMapper());
@@ -492,15 +415,6 @@ class RubricVersionRepositoryCoverageTest {
         .isInstanceOf(IllegalStateException.class);
   }
 
-  private static DimensionCustomInput customDimensionInput() {
-    return new DimensionCustomInput("algoritmos", "Algoritmos", "Criterio",
-        new Anchors(
-            new Anchor("bajo", 1, "ejemplo bajo"),
-            new Anchor("medio", 2, "ejemplo medio"),
-            new Anchor("alto", 3, "ejemplo alto")),
-        BigDecimal.valueOf(100));
-  }
-
   private static DimensionInput dimensionInput() {
     return new DimensionInput(Dimension.AUTONOMY, "Autonomía", "Criterio",
         new Anchors(
@@ -519,6 +433,82 @@ class RubricVersionRepositoryCoverageTest {
           when(r.getString("anchors")).thenReturn(ANCHORS_JSON);
           when(r.getObject("weight", BigDecimal.class)).thenReturn(BigDecimal.valueOf(20));
         }));
+  }
+
+  @Test
+  void listByChallengeListsChallengeOverlayVersions() {
+    var jdbc = mock(JdbcTemplate.class);
+    var repository = new RubricVersionRepository(jdbc, new ObjectMapper());
+    UUID course = UUID.randomUUID(), challenge = UUID.randomUUID();
+    when(jdbc.query(contains("f.scope = 'CHALLENGE'"), any(RowMapper.class), any(UUID.class), any(UUID.class)))
+        .thenAnswer(rowsOf(r -> {
+          when(r.getObject("id", UUID.class)).thenReturn(UUID.randomUUID());
+          when(r.getObject("family_id", UUID.class)).thenReturn(UUID.randomUUID());
+          when(r.getInt("version_no")).thenReturn(1);
+          when(r.getString("name")).thenReturn("Overlay");
+          when(r.getString("state")).thenReturn("DRAFT");
+          when(r.getLong("revision")).thenReturn(1L);
+        }));
+    stubDimensions(jdbc);
+
+    List<RubricVersion> result = repository.listByChallenge(course, challenge);
+
+    assertThat(result).hasSize(1);
+    assertThat(result.get(0).name()).isEqualTo("Overlay");
+  }
+
+  @Test
+  void findChallengeReturnsTheVersionWhenPresent() {
+    var jdbc = mock(JdbcTemplate.class);
+    var repository = new RubricVersionRepository(jdbc, new ObjectMapper());
+    UUID course = UUID.randomUUID(), challenge = UUID.randomUUID(), id = UUID.randomUUID();
+    when(jdbc.query(contains("f.scope = 'CHALLENGE' and v.id = ?"), any(RowMapper.class),
+        any(UUID.class), any(UUID.class), any(UUID.class)))
+        .thenAnswer(rowsOf(r -> {
+          when(r.getObject("id", UUID.class)).thenReturn(id);
+          when(r.getObject("family_id", UUID.class)).thenReturn(UUID.randomUUID());
+          when(r.getInt("version_no")).thenReturn(1);
+          when(r.getString("name")).thenReturn("Overlay");
+          when(r.getString("state")).thenReturn("DRAFT");
+          when(r.getLong("revision")).thenReturn(1L);
+        }));
+    stubDimensions(jdbc);
+
+    Optional<RubricVersion> result = repository.findChallenge(course, challenge, id);
+
+    assertThat(result).isPresent();
+    assertThat(result.get().id()).isEqualTo(id);
+  }
+
+  @Test
+  void challengeCustomDimensionsMapsOverlayDimensions() {
+    var jdbc = mock(JdbcTemplate.class);
+    var repository = new RubricVersionRepository(jdbc, new ObjectMapper());
+    when(jdbc.query(contains("from llm.rubric_custom_dimensions"), any(RowMapper.class), any(UUID.class)))
+        .thenAnswer(rowsOf(r -> {
+          when(r.getString("dimension_key")).thenReturn("algoritmos");
+          when(r.getString("label")).thenReturn("Algoritmos");
+          when(r.getString("criterion")).thenReturn("Criterio");
+          when(r.getString("anchors")).thenReturn(ANCHORS_JSON);
+          when(r.getObject("weight", BigDecimal.class)).thenReturn(BigDecimal.valueOf(60));
+        }));
+
+    List<DimensionCustomInput> result = repository.challengeCustomDimensions(UUID.randomUUID());
+
+    assertThat(result).hasSize(1);
+    assertThat(result.get(0).key()).isEqualTo("algoritmos");
+    assertThat(result.get(0).weight()).isEqualByComparingTo(BigDecimal.valueOf(60));
+  }
+
+  @Test
+  void baselineVersionIdOfReturnsTheBaseline() {
+    var jdbc = mock(JdbcTemplate.class);
+    var repository = new RubricVersionRepository(jdbc, new ObjectMapper());
+    UUID baseline = UUID.randomUUID();
+    when(jdbc.query(contains("select based_on_version_id"), any(RowMapper.class), any(UUID.class)))
+        .thenAnswer(rowsOf(r -> when(r.getObject("based_on_version_id", UUID.class)).thenReturn(baseline)));
+
+    assertThat(repository.baselineVersionIdOf(UUID.randomUUID())).isEqualTo(baseline);
   }
 
   @FunctionalInterface

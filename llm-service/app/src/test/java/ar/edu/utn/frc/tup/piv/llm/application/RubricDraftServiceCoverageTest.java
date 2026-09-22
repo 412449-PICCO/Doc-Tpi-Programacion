@@ -1,6 +1,5 @@
 package ar.edu.utn.frc.tup.piv.llm.application.service;
 
-import ar.edu.utn.frc.tup.piv.llm.application.service.RubricDraftService.DimensionCustomInput;
 import ar.edu.utn.frc.tup.piv.llm.application.service.RubricDraftService.DimensionInput;
 import ar.edu.utn.frc.tup.piv.llm.application.service.RubricDraftService.RubricInput;
 import ar.edu.utn.frc.tup.piv.llm.application.service.RubricDraftService.RubricVersion;
@@ -118,77 +117,6 @@ class RubricDraftServiceCoverageTest {
 
   @Test void optimisticLockExceptionCarriesItsMessage() {
     assertThat(new RubricDraftService.OptimisticLockException("stale").getMessage()).isEqualTo("stale");
-  }
-
-  @Test void autosaveModularPersistsCustomDimensionsAndPrompt() {
-    var repository = mock(RubricVersionRepository.class);
-    var service = new RubricDraftService(repository);
-    UUID course = UUID.randomUUID(), versionId = UUID.randomUUID();
-    var custom = List.of(customDimension("algoritmos", 60), customDimension("pruebas", 40));
-    var input = new RubricInput("  Rúbrica modular  ", "  Priorizar pruebas  ", RubricDraftService.MODULAR_KIND, null, custom);
-    when(repository.advanceRevision(course, versionId, 4)).thenReturn(true);
-    var saved = new RubricVersion(versionId, UUID.randomUUID(), 1, "Rúbrica modular", "DRAFT", 5, null,
-        RubricDraftService.MODULAR_KIND, "Priorizar pruebas", List.of(), custom);
-    when(repository.find(course, versionId)).thenReturn(Optional.of(saved));
-
-    assertThat(service.autosave(course, versionId, 4, input, actor)).isEqualTo(saved);
-    verify(repository).updateVersionName(course, versionId, "Rúbrica modular");
-    verify(repository).updateRubricKindAndPrompt(course, versionId, RubricDraftService.MODULAR_KIND, "Priorizar pruebas");
-    verify(repository).replaceCustomDimensions(versionId, custom);
-    verify(repository, never()).replaceDimensions(any(), any());
-  }
-
-  @Test void autosaveModularRejectsMissingDimensions() {
-    var repository = mock(RubricVersionRepository.class);
-    var service = new RubricDraftService(repository);
-    UUID course = UUID.randomUUID(), version = UUID.randomUUID();
-    var nullDimensions = new RubricInput("Rúbrica", null, RubricDraftService.MODULAR_KIND, null, null);
-    assertThatThrownBy(() -> service.autosave(course, version, 1, nullDimensions, actor))
-        .isInstanceOf(IllegalArgumentException.class).hasMessage("La rúbrica modular debe incluir nombre y al menos una dimensión");
-    var emptyDimensions = new RubricInput("Rúbrica", null, RubricDraftService.MODULAR_KIND, null, List.of());
-    assertThatThrownBy(() -> service.autosave(course, version, 1, emptyDimensions, actor))
-        .isInstanceOf(IllegalArgumentException.class);
-    var blankName = new RubricInput(" ", null, RubricDraftService.MODULAR_KIND, null, List.of(customDimension("a", 100)));
-    assertThatThrownBy(() -> service.autosave(course, version, 1, blankName, actor))
-        .isInstanceOf(IllegalArgumentException.class);
-    verify(repository, never()).advanceRevision(any(), any(), anyLong());
-  }
-
-  @Test void autosaveModularRejectsIncompleteDimensionFields() {
-    var repository = mock(RubricVersionRepository.class);
-    var service = new RubricDraftService(repository);
-    UUID course = UUID.randomUUID(), version = UUID.randomUUID();
-    var missingKey = new RubricInput("Rúbrica", null, RubricDraftService.MODULAR_KIND, null,
-        List.of(new DimensionCustomInput(" ", "Título", "Criterio", anchors(), BigDecimal.valueOf(100))));
-    assertThatThrownBy(() -> service.autosave(course, version, 1, missingKey, actor))
-        .isInstanceOf(IllegalArgumentException.class).hasMessage("Cada dimensión modular debe incluir clave, título y criterio");
-    var missingLabel = new RubricInput("Rúbrica", null, RubricDraftService.MODULAR_KIND, null,
-        List.of(new DimensionCustomInput("a", null, "Criterio", anchors(), BigDecimal.valueOf(100))));
-    assertThatThrownBy(() -> service.autosave(course, version, 1, missingLabel, actor))
-        .isInstanceOf(IllegalArgumentException.class);
-    verify(repository, never()).advanceRevision(any(), any(), anyLong());
-  }
-
-  @Test void autosaveModularRejectsWeightsNotTotallingOneHundred() {
-    var repository = mock(RubricVersionRepository.class);
-    var service = new RubricDraftService(repository);
-    UUID course = UUID.randomUUID(), version = UUID.randomUUID();
-    var input = new RubricInput("Rúbrica", null, RubricDraftService.MODULAR_KIND, null,
-        List.of(customDimension("algoritmos", 90)));
-    assertThatThrownBy(() -> service.autosave(course, version, 1, input, actor))
-        .isInstanceOf(IllegalArgumentException.class).hasMessage("Rubric weights must total 100");
-    verify(repository, never()).advanceRevision(any(), any(), anyLong());
-  }
-
-  private DimensionCustomInput customDimension(String key, int weight) {
-    return new DimensionCustomInput(key, key, "criterio", anchors(), BigDecimal.valueOf(weight));
-  }
-
-  private RubricDraftService.Anchors anchors() {
-    return new RubricDraftService.Anchors(
-        new RubricDraftService.Anchor("bajo", 25, "ejemplo bajo"),
-        new RubricDraftService.Anchor("medio", 60, "ejemplo medio"),
-        new RubricDraftService.Anchor("alto", 90, "ejemplo alto"));
   }
 
   private List<DimensionInput> inputDimensions() {

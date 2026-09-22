@@ -1,7 +1,7 @@
 package ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence;
 
-import ar.edu.utn.frc.tup.piv.llm.application.service.RubricDraftService.DimensionCustomInput;
 import ar.edu.utn.frc.tup.piv.llm.application.service.RubricDraftService.DimensionInput;
+import ar.edu.utn.frc.tup.piv.llm.application.service.RubricDraftService.DimensionCustomInput;
 import ar.edu.utn.frc.tup.piv.llm.application.service.RubricDraftService.Anchors;
 import ar.edu.utn.frc.tup.piv.llm.application.service.RubricDraftService.RubricInput;
 import ar.edu.utn.frc.tup.piv.llm.application.service.RubricDraftService.RubricVersion;
@@ -14,15 +14,11 @@ import java.util.UUID;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 
 /** Persistence boundary for course-scoped rubric versions. */
 @Repository
 public class RubricVersionRepository {
-  private static final String DEFAULT_KIND = "DEFAULT_INSTITUTIONAL";
-  private static final String MODULAR_KIND = "MODULAR_CUSTOM";
-
   private final JdbcTemplate jdbc;
   private final ObjectMapper mapper;
   public RubricVersionRepository(JdbcTemplate jdbc, ObjectMapper mapper) { this.jdbc = jdbc; this.mapper = mapper; }
@@ -35,17 +31,6 @@ public class RubricVersionRepository {
         """, (rs, row) -> new DimensionDefinition(Dimension.valueOf(rs.getString("dimension_key")), rs.getObject("weight", BigDecimal.class)), versionId, courseId);
   }
 
-  /** Dynamic dimensions of a modular draft, scoped to the course and still mutable. */
-  public List<DimensionCustomInput> customDimensionsOfDraft(UUID courseId, UUID versionId) {
-    return jdbc.query("""
-        select d.dimension_key, d.label, d.criterion, d.anchors::text as anchors, d.weight
-        from llm.rubric_custom_dimensions d
-        join llm.rubric_version_v2 v on v.id = d.rubric_version_id join llm.rubric_families f on f.id = v.family_id
-        where v.id = ? and f.course_id = ? and f.scope = 'COURSE' and v.state = 'DRAFT'
-        order by d.display_order, d.dimension_key
-        """, customDimensionRowMapper(), versionId, courseId);
-  }
-
   public boolean publishDraft(UUID courseId, UUID versionId) {
     return jdbc.update("""
         update llm.rubric_version_v2 v set state = 'PUBLISHED', published_at = now() from llm.rubric_families f
@@ -55,26 +40,29 @@ public class RubricVersionRepository {
 
   public List<RubricVersion> list(UUID courseId) {
     return jdbc.query("""
-        select v.id, v.family_id, v.version_no, v.name, v.state::text as state, v.revision, v.template_origin_version_id, v.rubric_kind, v.user_prompt
+        select v.id, v.family_id, v.version_no, v.name, v.state::text as state, v.revision, v.template_origin_version_id
         from llm.rubric_version_v2 v join llm.rubric_families f on f.id = v.family_id
         where f.course_id = ? and f.scope = 'COURSE' order by v.name, v.version_no desc
-        """, versionRowMapper(), courseId);
+        """, (rs, row) -> versionRow(rs.getObject("id", UUID.class), rs.getObject("family_id", UUID.class), rs.getInt("version_no"),
+        rs.getString("name"), rs.getString("state"), rs.getLong("revision"), rs.getObject("template_origin_version_id", UUID.class)), courseId);
   }
 
   public List<RubricVersion> listTemplates() {
     return jdbc.query("""
-        select v.id, v.family_id, v.version_no, v.name, v.state::text as state, v.revision, v.template_origin_version_id, v.rubric_kind, v.user_prompt
+        select v.id, v.family_id, v.version_no, v.name, v.state::text as state, v.revision, v.template_origin_version_id
         from llm.rubric_version_v2 v join llm.rubric_families f on f.id = v.family_id
         where f.scope = 'PLATFORM' and f.course_id is null order by v.name, v.version_no desc
-        """, versionRowMapper());
+        """, (rs, row) -> versionRow(rs.getObject("id", UUID.class), rs.getObject("family_id", UUID.class), rs.getInt("version_no"),
+        rs.getString("name"), rs.getString("state"), rs.getLong("revision"), rs.getObject("template_origin_version_id", UUID.class)));
   }
 
   public Optional<RubricVersion> findTemplate(UUID versionId) {
     return jdbc.query("""
-        select v.id, v.family_id, v.version_no, v.name, v.state::text as state, v.revision, v.template_origin_version_id, v.rubric_kind, v.user_prompt
+        select v.id, v.family_id, v.version_no, v.name, v.state::text as state, v.revision, v.template_origin_version_id
         from llm.rubric_version_v2 v join llm.rubric_families f on f.id = v.family_id
         where f.scope = 'PLATFORM' and f.course_id is null and v.id = ?
-        """, versionRowMapper(), versionId).stream().findFirst();
+        """, (rs, row) -> versionRow(rs.getObject("id", UUID.class), rs.getObject("family_id", UUID.class), rs.getInt("version_no"),
+        rs.getString("name"), rs.getString("state"), rs.getLong("revision"), rs.getObject("template_origin_version_id", UUID.class)), versionId).stream().findFirst();
   }
 
   public RubricVersion createTemplateDraft(RubricInput input, UUID actorId) {
@@ -82,7 +70,7 @@ public class RubricVersionRepository {
     jdbc.update("insert into llm.rubric_families (id, scope, next_version, created_by_user_id) values (?, 'PLATFORM', 2, ?)", familyId, actorId);
     jdbc.update("insert into llm.rubric_version_v2 (id, family_id, version_no, name, created_by_user_id) values (?, ?, 1, ?, ?)", versionId, familyId, input.name(), actorId);
     replaceDimensions(versionId, input.dimensions());
-    return versionRow(versionId, familyId, 1, input.name(), "DRAFT", 1, null, DEFAULT_KIND, "");
+    return versionRow(versionId, familyId, 1, input.name(), "DRAFT", 1, null);
   }
 
   public boolean advanceTemplateRevision(UUID versionId, long expectedRevision) {
@@ -109,15 +97,16 @@ public class RubricVersionRepository {
         insert into llm.rubric_dimension_v2 (rubric_version_id, dimension_key, label, criterion, anchors, weight)
         select ?, dimension_key, label, criterion, anchors, weight from llm.rubric_dimension_v2 where rubric_version_id = ?
         """, versionId, publishedVersionId);
-    return Optional.of(versionRow(versionId, current.familyId(), version, current.name(), "DRAFT", 1, null, DEFAULT_KIND, ""));
+    return Optional.of(versionRow(versionId, current.familyId(), version, current.name(), "DRAFT", 1, null));
   }
 
   public Optional<RubricVersion> find(UUID courseId, UUID versionId) {
     return jdbc.query("""
-        select v.id, v.family_id, v.version_no, v.name, v.state::text as state, v.revision, v.template_origin_version_id, v.rubric_kind, v.user_prompt
+        select v.id, v.family_id, v.version_no, v.name, v.state::text as state, v.revision, v.template_origin_version_id
         from llm.rubric_version_v2 v join llm.rubric_families f on f.id = v.family_id
         where f.course_id = ? and f.scope = 'COURSE' and v.id = ?
-        """, versionRowMapper(), courseId, versionId).stream().findFirst();
+        """, (rs, row) -> versionRow(rs.getObject("id", UUID.class), rs.getObject("family_id", UUID.class), rs.getInt("version_no"),
+        rs.getString("name"), rs.getString("state"), rs.getLong("revision"), rs.getObject("template_origin_version_id", UUID.class)), courseId, versionId).stream().findFirst();
   }
 
   public Optional<RubricVersion> createDraftFromPublishedTemplate(UUID courseId, UUID templateVersionId, String name, UUID actorId) {
@@ -133,7 +122,7 @@ public class RubricVersionRepository {
         insert into llm.rubric_dimension_v2 (rubric_version_id, dimension_key, label, criterion, anchors, weight)
         select ?, dimension_key, label, criterion, anchors, weight from llm.rubric_dimension_v2 where rubric_version_id = ?
         """, versionId, source);
-    return Optional.of(versionRow(versionId, familyId, 1, name, "DRAFT", 1, source, DEFAULT_KIND, ""));
+    return Optional.of(versionRow(versionId, familyId, 1, name, "DRAFT", 1, source));
   }
 
   /** Copies only a published version, reserves the family sequence atomically, and returns a mutable draft. */
@@ -148,23 +137,14 @@ public class RubricVersionRepository {
     if (reservation.isEmpty()) return Optional.empty();
     FamilyVersion family = reservation.getFirst(); UUID newVersionId = UUID.randomUUID();
     var source = find(courseId, publishedVersionId).orElseThrow();
-    boolean modular = MODULAR_KIND.equals(source.rubricKind());
-    jdbc.update("insert into llm.rubric_version_v2 (id, family_id, version_no, name, based_on_version_id, created_by_user_id, rubric_kind, user_prompt) values (?, ?, ?, ?, ?, ?, ?, ?)",
-        newVersionId, family.id(), family.version(), source.name(), publishedVersionId, actorId, source.rubricKind(), source.userPrompt());
-    if (modular) {
-      jdbc.update("""
-          insert into llm.rubric_custom_dimensions (rubric_version_id, dimension_key, label, criterion, anchors, weight, display_order)
-          select ?, dimension_key, label, criterion, anchors, weight, display_order
-          from llm.rubric_custom_dimensions where rubric_version_id = ?
-          """, newVersionId, publishedVersionId);
-    } else {
-      jdbc.update("""
-          insert into llm.rubric_dimension_v2 (rubric_version_id, dimension_key, label, criterion, anchors, weight)
-          select ?, dimension_key, label, criterion, anchors, weight
-          from llm.rubric_dimension_v2 where rubric_version_id = ?
-          """, newVersionId, publishedVersionId);
-    }
-    return Optional.of(versionRow(newVersionId, family.id(), family.version(), source.name(), "DRAFT", 1, null, source.rubricKind(), source.userPrompt()));
+    jdbc.update("insert into llm.rubric_version_v2 (id, family_id, version_no, name, based_on_version_id, created_by_user_id) values (?, ?, ?, ?, ?, ?)",
+        newVersionId, family.id(), family.version(), source.name(), publishedVersionId, actorId);
+    jdbc.update("""
+        insert into llm.rubric_dimension_v2 (rubric_version_id, dimension_key, label, criterion, anchors, weight)
+        select ?, dimension_key, label, criterion, anchors, weight
+        from llm.rubric_dimension_v2 where rubric_version_id = ?
+        """, newVersionId, publishedVersionId);
+    return Optional.of(versionRow(newVersionId, family.id(), family.version(), source.name(), "DRAFT", 1, null));
   }
 
   public boolean advanceRevision(UUID courseId, UUID versionId, long expectedRevision) {
@@ -179,13 +159,6 @@ public class RubricVersionRepository {
         update llm.rubric_version_v2 v set name = ? from llm.rubric_families f
         where v.family_id = f.id and v.id = ? and f.course_id = ? and f.scope = 'COURSE' and v.state = 'DRAFT'
         """, name, versionId, courseId);
-  }
-
-  public void updateRubricKindAndPrompt(UUID courseId, UUID versionId, String rubricKind, String userPrompt) {
-    jdbc.update("""
-        update llm.rubric_version_v2 v set rubric_kind = ?, user_prompt = ? from llm.rubric_families f
-        where v.family_id = f.id and v.id = ? and f.course_id = ? and f.scope = 'COURSE' and v.state = 'DRAFT'
-        """, rubricKind, userPrompt, versionId, courseId);
   }
 
   public void updateTemplateVersionName(UUID versionId, String name) {
@@ -203,52 +176,233 @@ public class RubricVersionRepository {
         """, versionId, dimension.key().name(), dimension.label(), dimension.criterion(), serialize(dimension.anchors()), dimension.weight());
   }
 
-  public void replaceCustomDimensions(UUID versionId, List<DimensionCustomInput> dimensions) {
-    jdbc.update("delete from llm.rubric_custom_dimensions where rubric_version_id = ?", versionId);
-    int order = 0;
-    for (var dimension : dimensions) jdbc.update("""
-        insert into llm.rubric_custom_dimensions (rubric_version_id, dimension_key, label, criterion, anchors, weight, display_order)
-        values (?, ?, ?, ?, cast(? as jsonb), ?, ?)
-        """, versionId, dimension.key(), dimension.label(), dimension.criterion(), serialize(dimension.anchors()), dimension.weight(), order++);
-  }
-
-  /** Pesos + evaluator_prompt de las 5 dimensiones de una versión de rúbrica — la calibración
-   * siempre referencia una versión ya PUBLICADA (constraint FK), así que a diferencia de
+  /** Pesos + evaluator_prompt de las 5 dimensiones de una versiÃ³n de rÃºbrica â€” la calibraciÃ³n
+   * siempre referencia una versiÃ³n ya PUBLICADA (constraint FK), asÃ­ que a diferencia de
    * {@link #dimensionsOfDraft} esto no filtra por curso ni por estado DRAFT. */
   public List<DimensionInput> weightsAndPrompts(UUID rubricVersionId) { return dimensions(rubricVersionId); }
 
-  private RowMapper<RubricVersion> versionRowMapper() {
-    return (rs, row) -> versionRow(rs.getObject("id", UUID.class), rs.getObject("family_id", UUID.class), rs.getInt("version_no"),
-        rs.getString("name"), rs.getString("state"), rs.getLong("revision"), rs.getObject("template_origin_version_id", UUID.class),
-        rs.getString("rubric_kind"), rs.getString("user_prompt"));
+  // === MÃ©todos para overlays de desafÃ­o (Parte A) ===
+
+  /** Lista todas las versiones de overlay para un desafÃ­o especÃ­fico. */
+  public List<RubricVersion> listByChallenge(UUID courseId, UUID challengeId) {
+    return jdbc.query("""
+        select v.id, v.family_id, v.version_no, v.name, v.state::text as state, v.revision, v.template_origin_version_id
+        from llm.rubric_version_v2 v
+        join llm.rubric_families f on f.id = v.family_id
+        where f.course_id = ? and f.challenge_id = ? and f.scope = 'CHALLENGE'
+        order by v.version_no desc
+        """, (rs, row) -> versionRow(
+            rs.getObject("id", UUID.class),
+            rs.getObject("family_id", UUID.class),
+            rs.getInt("version_no"),
+            rs.getString("name"),
+            rs.getString("state"),
+            rs.getLong("revision"),
+            rs.getObject("template_origin_version_id", UUID.class)
+        ), courseId, challengeId);
+  }
+
+  /** Busca una versiÃ³n especÃ­fica de overlay para un desafÃ­o. */
+  public Optional<RubricVersion> findChallenge(UUID courseId, UUID challengeId, UUID versionId) {
+    return jdbc.query("""
+        select v.id, v.family_id, v.version_no, v.name, v.state::text as state, v.revision, v.template_origin_version_id
+        from llm.rubric_version_v2 v
+        join llm.rubric_families f on f.id = v.family_id
+        where f.course_id = ? and f.challenge_id = ? and f.scope = 'CHALLENGE' and v.id = ?
+        """, (rs, row) -> versionRow(
+            rs.getObject("id", UUID.class),
+            rs.getObject("family_id", UUID.class),
+            rs.getInt("version_no"),
+            rs.getString("name"),
+            rs.getString("state"),
+            rs.getLong("revision"),
+            rs.getObject("template_origin_version_id", UUID.class)
+        ), courseId, challengeId, versionId).stream().findFirst();
+  }
+
+  /** Crea un borrador de overlay para un desafÃ­o, vinculado a una rÃºbrica base del curso. */
+  public Optional<RubricVersion> createDraftForChallenge(UUID courseId, UUID challengeId, String name,
+      UUID baselineVersionId, UUID actorId) {
+    UUID familyId = UUID.randomUUID();
+    UUID versionId = UUID.randomUUID();
+
+    // Crear la familia con scope CHALLENGE
+    jdbc.update("""
+        insert into llm.rubric_families (id, scope, course_id, challenge_id, next_version, created_by_user_id)
+        values (?, 'CHALLENGE', ?, ?, 2, ?)
+        """, familyId, courseId, challengeId, actorId);
+
+    // Crear la versiÃ³n del overlay con rubric_kind MODULAR_CUSTOM y baseline_version_id
+    jdbc.update("""
+        insert into llm.rubric_version_v2 (id, family_id, version_no, name, rubric_kind, user_prompt,
+            based_on_version_id, created_by_user_id)
+        values (?, ?, 1, ?, 'MODULAR_CUSTOM', '', ?, ?)
+        """, versionId, familyId, name, baselineVersionId, actorId);
+
+    return jdbc.query("""
+        select v.id, v.family_id, v.version_no, v.name, v.state::text as state, v.revision, v.template_origin_version_id
+        from llm.rubric_version_v2 v where v.id = ?
+        """, (rs, row) -> versionRow(
+            rs.getObject("id", UUID.class),
+            rs.getObject("family_id", UUID.class),
+            rs.getInt("version_no"),
+            rs.getString("name"),
+            rs.getString("state"),
+            rs.getLong("revision"),
+            rs.getObject("template_origin_version_id", UUID.class)
+        ), versionId).stream().findFirst();
+  }
+
+  /** Avanza la revisiÃ³n de un overlay (optimistic locking). */
+  public boolean advanceChallengeRevision(UUID courseId, UUID challengeId, UUID versionId, long expectedRevision) {
+    return jdbc.update("""
+        update llm.rubric_version_v2 v
+        set revision = revision + 1
+        from llm.rubric_families f
+        where v.family_id = f.id and f.course_id = ? and f.challenge_id = ? and f.scope = 'CHALLENGE'
+          and v.id = ? and v.state = 'DRAFT' and v.revision = ?
+        """, courseId, challengeId, versionId, expectedRevision) == 1;
+  }
+
+  /** Actualiza el nombre de una versiÃ³n de overlay. */
+  public void updateChallengeVersionName(UUID courseId, UUID challengeId, UUID versionId, String name) {
+    jdbc.update("""
+        update llm.rubric_version_v2 v
+        set name = ?
+        from llm.rubric_families f
+        where v.family_id = f.id and f.course_id = ? and f.challenge_id = ? and f.scope = 'CHALLENGE'
+          and v.id = ? and v.state = 'DRAFT'
+        """, name, courseId, challengeId, versionId);
+  }
+
+  /** Actualiza el user_prompt de una versiÃ³n de overlay. */
+  public void updateChallengePrompt(UUID courseId, UUID challengeId, UUID versionId, String userPrompt) {
+    jdbc.update("""
+        update llm.rubric_version_v2 v
+        set user_prompt = ?
+        from llm.rubric_families f
+        where v.family_id = f.id and f.course_id = ? and f.challenge_id = ? and f.scope = 'CHALLENGE'
+          and v.id = ? and v.state = 'DRAFT'
+        """, userPrompt, courseId, challengeId, versionId);
+  }
+
+  /** Reemplaza las dimensiones custom de un overlay. */
+  public void replaceChallengeCustomDimensions(UUID versionId, List<DimensionCustomInput> dimensions) {
+    jdbc.update("delete from llm.rubric_custom_dimensions where rubric_version_id = ?", versionId);
+    for (int i = 0; i < dimensions.size(); i++) {
+      var dimension = dimensions.get(i);
+      jdbc.update("""
+          insert into llm.rubric_custom_dimensions
+              (rubric_version_id, dimension_key, label, criterion, anchors, weight, display_order)
+          values (?, ?, ?, ?, cast(? as jsonb), ?, ?)
+          """, versionId, dimension.key(), dimension.label(), dimension.criterion(),
+          serialize(dimension.anchors()), dimension.weight(), i);
+    }
+  }
+
+  /** Publica un borrador de overlay. */
+  public boolean publishChallengeDraft(UUID courseId, UUID challengeId, UUID versionId) {
+    return jdbc.update("""
+        update llm.rubric_version_v2 v
+        set state = 'PUBLISHED', published_at = now()
+        from llm.rubric_families f
+        where v.family_id = f.id and f.course_id = ? and f.challenge_id = ? and f.scope = 'CHALLENGE'
+          and v.id = ? and v.state = 'DRAFT'
+        """, courseId, challengeId, versionId) == 1;
+  }
+
+  /** Crea una nueva versiÃ³n de overlay basada en una versiÃ³n publicada. */
+  public Optional<RubricVersion> createNextChallengeDraft(UUID courseId, UUID challengeId,
+      UUID publishedVersionId, UUID actorId) {
+    var published = findChallenge(courseId, challengeId, publishedVersionId);
+    if (published.isEmpty() || !"PUBLISHED".equals(published.get().state())) {
+      return Optional.empty();
+    }
+
+    UUID familyId = published.get().familyId();
+    int nextVersion = jdbc.queryForObject("""
+        select coalesce(max(version_no), 0) + 1
+        from llm.rubric_version_v2 where family_id = ?
+        """, Integer.class, familyId);
+
+    UUID newVersionId = UUID.randomUUID();
+
+    // Crear la nueva versiÃ³n
+    jdbc.update("""
+        insert into llm.rubric_version_v2 (id, family_id, version_no, name, rubric_kind, user_prompt,
+            based_on_version_id, created_by_user_id)
+        values (?, ?, ?, ?, 'MODULAR_CUSTOM', '', ?, ?)
+        """, newVersionId, familyId, nextVersion, published.get().name(), publishedVersionId, actorId);
+
+    // Copiar las dimensiones custom de la versiÃ³n publicada
+    jdbc.update("""
+        insert into llm.rubric_custom_dimensions
+            (rubric_version_id, dimension_key, label, criterion, anchors, weight, display_order)
+        select ?, dimension_key, label, criterion, anchors, weight, display_order
+        from llm.rubric_custom_dimensions
+        where rubric_version_id = ?
+        """, newVersionId, publishedVersionId);
+
+    return jdbc.query("""
+        select v.id, v.family_id, v.version_no, v.name, v.state::text as state, v.revision, v.template_origin_version_id
+        from llm.rubric_version_v2 v where v.id = ?
+        """, (rs, row) -> versionRow(
+            rs.getObject("id", UUID.class),
+            rs.getObject("family_id", UUID.class),
+            rs.getInt("version_no"),
+            rs.getString("name"),
+            rs.getString("state"),
+            rs.getLong("revision"),
+            rs.getObject("template_origin_version_id", UUID.class)
+        ), newVersionId).stream().findFirst();
+  }
+
+  /** Obtiene las dimensiones custom de una versiÃ³n de overlay. */
+  public List<DimensionCustomInput> challengeCustomDimensions(UUID versionId) {
+    return jdbc.query("""
+        select dimension_key, label, criterion, anchors::text as anchors, weight
+        from llm.rubric_custom_dimensions
+        where rubric_version_id = ?
+        order by display_order
+""", (rs, row) -> new DimensionCustomInput(
+            rs.getString("dimension_key"),
+            rs.getString("label"),
+            rs.getString("criterion"),
+            deserialize(rs.getString("anchors")),
+            rs.getObject("weight", BigDecimal.class)
+        ), versionId);
   }
 
   private RubricVersion versionRow(UUID id, UUID familyId, int version, String name, String state, long revision,
-      UUID templateOriginVersionId, String rubricKind, String userPrompt) {
-    String kind = rubricKind == null ? DEFAULT_KIND : rubricKind;
-    boolean modular = MODULAR_KIND.equals(kind);
-    return new RubricVersion(id, familyId, version, name, state, revision, templateOriginVersionId, kind,
-        userPrompt == null ? "" : userPrompt,
-        modular ? List.of() : dimensions(id),
-        modular ? customDimensions(id) : List.of());
-  }
-
-  private List<DimensionInput> dimensions(UUID versionId) {
+      UUID templateOriginVersionId) { return new RubricVersion(id, familyId, version, name, state, revision, templateOriginVersionId, dimensions(id)); }
+  /** Public accessor: 5 institutional dimensions of a rubric version (used by EffectiveRubricResolver). */
+  public List<DimensionInput> dimensions(UUID versionId) {
     return jdbc.query("select dimension_key, label, criterion, anchors::text as anchors, weight from llm.rubric_dimension_v2 where rubric_version_id = ? order by dimension_key",
         (rs, row) -> new DimensionInput(Dimension.valueOf(rs.getString("dimension_key")), rs.getString("label"), rs.getString("criterion"), deserialize(rs.getString("anchors")), rs.getObject("weight", BigDecimal.class)), versionId);
   }
 
-  private List<DimensionCustomInput> customDimensions(UUID versionId) {
-    return jdbc.query("select dimension_key, label, criterion, anchors::text as anchors, weight from llm.rubric_custom_dimensions where rubric_version_id = ? order by display_order, dimension_key",
-        customDimensionRowMapper(), versionId);
+  /** Public accessor: baseline_version_id of a rubric version (used by ChallengeRubricOverlayService). */
+  public UUID baselineVersionIdOf(UUID versionId) {
+    return jdbc.query("select based_on_version_id from llm.rubric_version_v2 where id = ?",
+        (rs, row) -> rs.getObject("based_on_version_id", UUID.class), versionId)
+        .stream().findFirst().orElse(null);
   }
 
-  private RowMapper<DimensionCustomInput> customDimensionRowMapper() {
-    return (rs, row) -> new DimensionCustomInput(rs.getString("dimension_key"), rs.getString("label"), rs.getString("criterion"),
-        deserialize(rs.getString("anchors")), rs.getObject("weight", BigDecimal.class));
+  /** Public accessor: rubric_kind of a rubric version. */
+  public String rubricKindOf(UUID versionId) {
+    return jdbc.query("select rubric_kind from llm.rubric_version_v2 where id = ?",
+        (rs, row) -> rs.getString("rubric_kind"), versionId)
+        .stream().findFirst().orElse("DEFAULT_INSTITUTIONAL");
   }
 
-  private String serialize(Object value) { try { return mapper.writeValueAsString(value); } catch (JsonProcessingException exception) { throw new IllegalArgumentException("Anclas inválidas", exception); } }
-  private Anchors deserialize(String value) { try { return mapper.readValue(value, Anchors.class); } catch (JsonProcessingException exception) { throw new IllegalStateException("Anclas almacenadas inválidas", exception); } }
+  /** Public accessor: user_prompt of a rubric version. */
+  public String userPromptOf(UUID versionId) {
+    return jdbc.query("select user_prompt from llm.rubric_version_v2 where id = ?",
+        (rs, row) -> rs.getString("user_prompt"), versionId)
+        .stream().findFirst().orElse("");
+  }
+  private String serialize(Object value) { try { return mapper.writeValueAsString(value); } catch (JsonProcessingException exception) { throw new IllegalArgumentException("Anclas invÃ¡lidas", exception); } }
+  private Anchors deserialize(String value) { try { return mapper.readValue(value, Anchors.class); } catch (JsonProcessingException exception) { throw new IllegalStateException("Anclas almacenadas invÃ¡lidas", exception); } }
   private record FamilyVersion(UUID id, int version) {}
 }
+
