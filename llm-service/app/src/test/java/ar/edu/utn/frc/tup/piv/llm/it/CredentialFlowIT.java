@@ -75,7 +75,7 @@ class CredentialFlowIT extends AbstractIntegrationIT {
         .andExpect(status().isUnprocessableEntity());
     mvc.perform(asTeacher(post(ADMIN + "/provider-credentials"), c).content("{\"displayName\":\"sin proveedor\"}")).andExpect(status().isBadRequest());
     mvc.perform(asTeacher(post(ADMIN + "/evaluator-models/" + UUID.randomUUID() + "/chat"), c).content("{\"message\":\"hola\"}"))
-        .andExpect(status().isConflict());
+        .andExpect(status().isNotFound());
     mvc.perform(asTeacher(post(ADMIN + "/evaluator-models/" + UUID.randomUUID() + "/activate"), c)).andExpect(status().isConflict());
     mvc.perform(asTeacher(get(ADMIN + "/evaluator-models/" + UUID.randomUUID() + "/usage"), c)).andExpect(status().is2xxSuccessful());
     mvc.perform(get(ADMIN + "/provider-credentials")).andExpect(status().isUnauthorized());

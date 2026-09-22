@@ -34,8 +34,9 @@
   el código o se reescribe CA4/Escenario 2 de [h03.md](historias/ep-01/h03.md).
 - [ ] **[EP-01·H03]** ¿Existe hoy un pipeline de CI real para `llm-service` (CA6)? La auditoría de
   código no encontró workflow en `.github/workflows/`.
-- [ ] **[EP-01·H05]** ¿Con qué herramienta se va a levantar el mock del golden set con "un solo
-  comando" (CA2)? Propuesto: Prism sobre el OpenAPI publicado — falta confirmarlo y ejecutarlo.
+- [x] ✅ **2026-09-21 [EP-01·H05]** ¿Con qué herramienta se va a levantar el mock del golden set con "un solo
+  comando" (CA2)? Prism sobre el OpenAPI publicado: se ejecutó y responde conforme al contrato (URL sin el prefijo `/api/llm`;
+  ver `contracts/MOCK.md`).
 - [ ] **[EP-01·H05]** ¿La adenda S1 del contrato ya está revisada y firmada por `admin-service`, o
   sigue pendiente?
 - [ ] **[EP-01·H06]** ¿Qué herramienta de cobertura (JaCoCo u otra) se usa para el gate de CI

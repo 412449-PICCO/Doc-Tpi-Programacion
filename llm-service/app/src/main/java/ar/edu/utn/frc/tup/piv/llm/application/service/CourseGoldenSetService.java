@@ -1,5 +1,7 @@
 package ar.edu.utn.frc.tup.piv.llm.application.service;
 
+import ar.edu.utn.frc.tup.piv.llm.application.exception.ResourceNotFoundException;
+
 import ar.edu.utn.frc.tup.piv.llm.application.service.RealCaseAnonymizer;
 import ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.AuditRepository;
 import ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.CourseGoldenSetRepository;
@@ -89,7 +91,7 @@ public class CourseGoldenSetService {
       throw new GoldenSetSizeException("Para publicar el Golden Set necesitás entre tres y cinco casos");
     }
     var version = goldenSets.findDetail(courseId, versionId)
-        .orElseThrow(() -> new IllegalStateException("El Golden Set no existe"));
+        .orElseThrow(() -> new ResourceNotFoundException("El Golden Set no existe"));
     if (!goldenSets.publishDraft(courseId, versionId)) {
       throw new IllegalStateException("El Golden Set no existe en el curso o ya no es un borrador");
     }
@@ -105,7 +107,7 @@ public class CourseGoldenSetService {
   @Transactional(readOnly = true)
   public GoldenSetDetail get(UUID courseId, UUID versionId) {
     return goldenSets.findDetail(courseId, versionId)
-        .orElseThrow(() -> new IllegalStateException("El Golden Set no existe en el curso"));
+        .orElseThrow(() -> new ResourceNotFoundException("El Golden Set no existe en el curso"));
   }
 
   @Transactional

@@ -1,5 +1,7 @@
 package ar.edu.utn.frc.tup.piv.llm.application.service;
 
+import ar.edu.utn.frc.tup.piv.llm.application.exception.ResourceNotFoundException;
+
 import ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.AuditRepository;
 import ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.CalibrationReproducibilityRepository;
 import ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.CalibrationRunRepository;
@@ -56,7 +58,7 @@ public class CalibrationRunService {
   @Transactional(readOnly = true)
   public CalibrationRunRepository.Run get(UUID courseId, UUID runId) {
     return runs.find(courseId, runId)
-        .orElseThrow(() -> new IllegalStateException("La calibración no existe en el curso"));
+        .orElseThrow(() -> new ResourceNotFoundException("La calibración no existe en el curso"));
   }
 
   @Transactional(readOnly = true)

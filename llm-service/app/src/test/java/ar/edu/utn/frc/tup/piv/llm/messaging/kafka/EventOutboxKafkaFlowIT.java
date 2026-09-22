@@ -77,7 +77,7 @@ class EventOutboxKafkaFlowIT extends AbstractIntegrationIT {
   void tearDownClients() {
     testConsumer.close();
     testProducer.close();
-    // event_outbox y kafka_consumed_events son append-only (triggers de V1/V30); cada test usa
+    // event_outbox y kafka_consumed_events son append-only (triggers de V1/V35/V36); cada test usa
     // UUID.randomUUID() para no colisionar entre corridas, así que no hace falta (ni se puede)
     // limpiarlas acá.
   }

@@ -91,5 +91,5 @@ tablas listas: la Fase 2 solo agrega una **fuente** más (`ShadowSampleSource`) 
 ## Dónde está en el código
 
 `llm-service/src/main/java/ar/edu/utn/frc/tup/piv/llm/shadow/` (`domain`, `application`, `infrastructure`, `api`),
-migración `V31__shadow_evaluation.sql`, contrato en [`llm-service.openapi.yaml`](../../contracts/llm-service.openapi.yaml)
+migración `V37__shadow_evaluation.sql`, contrato en [`llm-service.openapi.yaml`](../../contracts/llm-service.openapi.yaml)
 (`/shadow-runs`). Tests: `shadow/**` (unitarios) y `it/ShadowPersistenceIT` (Postgres real).

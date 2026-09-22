@@ -25,4 +25,10 @@ class CalibrationStateMachineTest {
     assertThat(CalibrationStateMachine.mustQueue(EvaluationState.QUEUED, false)).isTrue();
     assertThat(CalibrationStateMachine.mustQueue(EvaluationState.QUEUED, true)).isFalse();
   }
+
+  @Test void canActivate_shouldOnlyAllowPassedCalibrations() {
+    assertThat(CalibrationStateMachine.canActivate(PASSED)).isTrue();
+    assertThat(CalibrationStateMachine.canActivate(FAILED)).isFalse();
+    assertThat(CalibrationStateMachine.canActivate(RUNNING)).isFalse();
+  }
 }

@@ -49,8 +49,9 @@ docker compose up --build
 ```
 
 Levanta tres servicios *healthy*: `postgres`, `kafka-local` (broker local para probar sin la plataforma) y
-`llm-service`. `compose.yaml` fija `container_name: tpi-llm`: si ya existe un contenedor con ese nombre de otro
-proyecto, borrarlo (`docker rm tpi-llm`) o el `up` falla con `container name "/tpi-llm" is already in use`.
+`llm-service`. `compose.yaml` fija `container_name: llm-service` (el nombre del servicio, igual que en Eureka): si ya existe
+un contenedor con ese nombre de otro proyecto, borrarlo (`docker rm llm-service`) o el `up` falla con
+`container name "/llm-service" is already in use`.
 El smoke `scripts/smoke-compose.sh` no tiene ese problema: usa nombres propios y clave descartable.
 
 El servicio queda disponible sólo dentro de la red Docker. Su healthcheck es
@@ -95,7 +96,7 @@ Variables de entorno: ver [`.env.example`](.env.example).
 ### Guía de Demo y Verificación de Reinicio (Sprint 1)
 
 Para la Sprint Review y verificación reproducible con evidencia técnica:
-- **Guía de demo paso a paso:** [`docs/guia-demo-s1.md`](docs/guia-demo-s1.md) (versión canónica V2: [`docsV2/06-operacion-calidad-y-pruebas/05-guia-demo-s1.md`](docsV2/06-operacion-calidad-y-pruebas/05-guia-demo-s1.md)).
+- **Guía de demo paso a paso:** [`docsV2/06-operacion-calidad-y-pruebas/05-guia-demo-s1.md`](docsV2/06-operacion-calidad-y-pruebas/05-guia-demo-s1.md) (verificada el 2026-09-21).
 - **Prueba automatizada de reinicio de Compose (H06·T4):**
   - Linux / macOS / Git Bash: `bash scripts/test-compose-restart.sh`
   - Windows PowerShell: `powershell -File scripts/test-compose-restart.ps1`

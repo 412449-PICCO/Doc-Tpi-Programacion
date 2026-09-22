@@ -613,17 +613,17 @@ components:
         baselineRubricVersionId: { type: string, format: uuid }
         candidateRubricVersionId: { type: string, format: uuid }
         source: { type: string, enum: [GOLDEN_SET, TUTOR_CONVERSATIONS] }
-        goldenSetVersionId: { type: string, format: uuid, nullable: true }
+        goldenSetVersionId: { type: [string, 'null'], format: uuid }
         sampleSize: { type: integer }
         divergenceThreshold: { type: number }
         state: { type: string, enum: [QUEUED, RUNNING, COMPLETED, FAILED] }
         progress: { type: integer, minimum: 0, maximum: 100 }
-        summary: { allOf: [{ $ref: '#/components/schemas/ShadowSummary' }], nullable: true, description: Solo cuando state es COMPLETED. }
-        failureCode: { type: string, nullable: true, enum: [NO_SAMPLES, INVALID_RUBRIC, SHADOW_EXECUTION_FAILED] }
+        summary: { oneOf: [{ $ref: '#/components/schemas/ShadowSummary' }, { type: 'null' }], description: Solo cuando state es COMPLETED. }
+        failureCode: { type: [string, 'null'], enum: [NO_SAMPLES, INVALID_RUBRIC, SHADOW_EXECUTION_FAILED, null] }
         createdByUserId: { type: string, format: uuid }
         createdAt: { type: string, format: date-time }
-        startedAt: { type: string, format: date-time, nullable: true }
-        finishedAt: { type: string, format: date-time, nullable: true }
+        startedAt: { type: [string, 'null'], format: date-time }
+        finishedAt: { type: [string, 'null'], format: date-time }
     ShadowSummary:
       type: object
       description: |
@@ -638,8 +638,8 @@ components:
         bias: { type: number, description: Promedio de la divergencia con signo. }
         maxDivergence: { type: number }
         shareOverThreshold: { type: number, minimum: 0, maximum: 1 }
-        baselineMaeVsHuman: { type: number, nullable: true, description: Solo con fuente GOLDEN_SET. }
-        candidateMaeVsHuman: { type: number, nullable: true, description: Solo con fuente GOLDEN_SET. }
+        baselineMaeVsHuman: { type: [number, 'null'], description: Solo con fuente GOLDEN_SET. }
+        candidateMaeVsHuman: { type: [number, 'null'], description: Solo con fuente GOLDEN_SET. }
         mostDivergent:
           type: array
           maxItems: 5

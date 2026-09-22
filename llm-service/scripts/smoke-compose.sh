@@ -5,7 +5,7 @@ project_name="llm-s1-smoke"
 mode="${1:-}"
 
 # compose.yaml fija container_name y nombra las redes: sin este override el smoke choca con cualquier
-# contenedor/red de otro proyecto (p. ej. `tpi-llm`) y exige que exista la red externa `tpi-platform`.
+# contenedor/red de otro proyecto (p. ej. `llm-service`) y exige que exista la red externa `tpi-platform`.
 # Todo lo que crea el smoke lleva el prefijo del proyecto y se borra al salir.
 override="$(mktemp)"
 cat > "$override" <<EOF

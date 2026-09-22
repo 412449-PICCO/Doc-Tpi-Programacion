@@ -1,5 +1,7 @@
 package ar.edu.utn.frc.tup.piv.llm.adapter.in.web;
 
+import ar.edu.utn.frc.tup.piv.llm.application.exception.ResourceNotFoundException;
+
 import ar.edu.utn.frc.tup.piv.llm.adapter.out.ai.EncryptedSecretService;
 import ar.edu.utn.frc.tup.piv.llm.adapter.out.ai.ProviderInvocationGateway;
 import ar.edu.utn.frc.tup.piv.llm.adapter.out.ai.ProviderRegistry;
@@ -174,7 +176,7 @@ public class ProviderCredentialController {
     @PostMapping("/evaluator-models/{id}/chat")
     public ChatResponse chat(@PathVariable UUID id, @Valid @RequestBody ChatRequest request, @RequestHeader HttpHeaders headers) {
         authorization.require(headers);
-        var deployment = repository.deployment(id).orElseThrow(() -> new IllegalStateException("El modelo no existe"));
+        var deployment = repository.deployment(id).orElseThrow(() -> new ResourceNotFoundException("El modelo no existe"));
         var reply = viaGateway(deployment.providerKey(), deployment.modelId(), request.message().trim(), 90,
                 () -> gateway.invoke(credential(deployment.credentialId()), deployment.modelId(), request.message().trim(), defaults(), Duration.ofSeconds(90)));
         repository.recordUsage(id, "ADMIN_TEST", reply.inputTokens(), reply.outputTokens());
@@ -184,7 +186,7 @@ public class ProviderCredentialController {
     @PostMapping(value = "/evaluator-models/{id}/chat/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter streamChat(@PathVariable UUID id, @Valid @RequestBody ChatRequest request, @RequestHeader HttpHeaders headers) {
         authorization.require(headers);
-        var deployment = repository.deployment(id).orElseThrow(() -> new IllegalStateException("El modelo no existe"));
+        var deployment = repository.deployment(id).orElseThrow(() -> new ResourceNotFoundException("El modelo no existe"));
         var emitter = new SseEmitter(120_000L);
         Thread.ofVirtual().start(() -> {
             try {

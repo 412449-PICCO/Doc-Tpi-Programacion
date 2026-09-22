@@ -63,4 +63,42 @@ class FlywaySchemaTest {
       }
     }
   }
+
+  /**
+   * H04·CA2/T7: crear la base desde cero dos veces deja exactamente el mismo esquema y las mismas
+   * migraciones (versión + checksum). La cadena vigente es V1–V23 y V26–V38: el hueco V24/V25 es
+   * intencional (eran las de Kafka de `main`, descartadas en la integración del 2026-09-21).
+   */
+  @Test void fullMigrationChainIsReproducibleFromScratchAndKeepsTheIntentionalGap() throws Exception {
+    String first = migrateFromScratchAndFingerprint();
+    String second = migrateFromScratchAndFingerprint();
+    assertThat(second).isEqualTo(first);
+    assertThat(first).contains("versions=1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,26,27,28,29,30,31,32,33,34,35,36,37,38");
+    assertThat(first).contains("rubric1.0=autonomy:30,clarity:25,compliance:15,efficiency:10,progression:20");
+  }
+
+  private static String migrateFromScratchAndFingerprint() throws Exception {
+    try (PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>(
+        org.testcontainers.utility.DockerImageName.parse("pgvector/pgvector:pg16").asCompatibleSubstituteFor("postgres"))) {
+      postgres.start();
+      var flyway = Flyway.configure().dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
+          .schemas("llm").defaultSchema("llm").createSchemas(true).load();
+      flyway.migrate();
+      flyway.validate();
+      try (var connection = DriverManager.getConnection(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
+           var statement = connection.createStatement()) {
+        return "versions=" + one(statement, "select string_agg(version, ',' order by installed_rank) from llm.flyway_schema_history where version is not null and success")
+            + "|checksums=" + one(statement, "select md5(string_agg(version || ':' || checksum, ',' order by installed_rank)) from llm.flyway_schema_history where version is not null")
+            + "|columns=" + one(statement, "select md5(string_agg(table_schema || '.' || table_name || '.' || column_name || ':' || data_type || ':' || is_nullable, ',' order by table_schema, table_name, column_name)) from information_schema.columns where table_schema in ('llm', 'legacy_v1')")
+            + "|rubric1.0=" + one(statement, "select string_agg(d.code || ':' || d.weight, ',' order by d.code) from legacy_v1.rubric_dimensions d join legacy_v1.rubric_versions v on v.id = d.rubric_version_id where v.version = '1.0'");
+      }
+    }
+  }
+
+  private static String one(java.sql.Statement statement, String sql) throws SQLException {
+    try (var rs = statement.executeQuery(sql)) {
+      rs.next();
+      return rs.getString(1);
+    }
+  }
 }

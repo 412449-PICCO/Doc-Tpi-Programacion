@@ -20,8 +20,10 @@ Disponer de Node.js (npx se incluye por defecto) o Docker.
 npx --yes @stoplight/prism-cli mock llm-service/docsV2/contracts/llm-service.openapi.yaml --port 4010
 ```
 
-El simulador queda disponible en:  
-`http://localhost:4010/api/llm`
+El simulador queda disponible en `http://localhost:4010`, **sin** el prefijo `/api/llm`: Prism ignora el
+`servers.url` relativo del contrato, así que `GET /api/llm/admin/rubric-templates` del servicio real es
+`GET http://localhost:4010/admin/rubric-templates` en el mock. Verificado el 2026-09-21: devuelve `200` con
+cuerpo conforme al esquema y `401` sin `Authorization` (el contrato exige `serviceJwt`).
 
 ### Alternativa con Docker (sin requerir Node local)
 

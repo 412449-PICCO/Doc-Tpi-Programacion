@@ -10,7 +10,7 @@
 
 | Servicio | Compose | Imagen | Por qué está activo |
 |---|---|---|---|
-| **`postgres`** | `compose.yaml` | `pgvector/pgvector:pg16` | Única base de datos del servicio (docs/12 §2) **y** motor de la extensión `vector` que usan los chunks de RAG (`V14__tutor_conversations_and_rag.sql`, `CREATE EXTENSION IF NOT EXISTS vector`). |
+| **`postgres`** | `compose.yaml` | `pgvector/pgvector:pg16` | Única base de datos del servicio (docs/12 §2) **y** motor de la extensión `vector` que usan los chunks de RAG (`V28__tutor_conversations_and_rag.sql`, `CREATE EXTENSION IF NOT EXISTS vector`). |
 | **`llm-service`** | `compose.yaml` | build de `Dockerfile` (Java 21 / Spring Boot 3) | El backend. Sin `ports` publicado por defecto: en la plataforma real solo el API Gateway expone puertos (ADR-015, docs/08 · [gateway-y-discovery/01](06-gateway-y-discovery/01-principios-y-reglas-de-red.md)). |
 | **`gateway-mock`** | `compose.workbench.yaml` (se suma con `-f`) | Nginx | Único punto HTTP del laboratorio (`localhost:8080`). Enruta `/api/llm/**` al `llm-service` real y `/api/courses/**` al `courses-mock`. Descarta los headers de identidad que mande el cliente, inyecta identidad delegada de desarrollo, `traceparent` y `X-Request-Id`, y conserva el path completo. |
 | **`courses-mock`** | `compose.workbench.yaml` (se suma con `-f`) | MockServer | Reemplaza a `courses-service` (Tema 02) para resolver membresías de curso sin depender del equipo real. |

@@ -86,6 +86,12 @@ public class ApiExceptionHandler {
   ProblemDetail invalid(IllegalArgumentException exception, HttpServletRequest request) { return problem(HttpStatus.UNPROCESSABLE_ENTITY, exception.getMessage(), request); }
   @ExceptionHandler(OptimisticLockException.class)
   ProblemDetail staleDraft(OptimisticLockException exception, HttpServletRequest request) { return problem(HttpStatus.CONFLICT, exception.getMessage(), request); }
+  @ExceptionHandler(ar.edu.utn.frc.tup.piv.llm.application.exception.ResourceNotFoundException.class)
+  ProblemDetail notFound(ar.edu.utn.frc.tup.piv.llm.application.exception.ResourceNotFoundException exception, HttpServletRequest request) {
+    ProblemDetail p = problem(HttpStatus.NOT_FOUND, exception.getMessage(), request);
+    p.setProperty("error", "not_found");
+    return p;
+  }
   @ExceptionHandler(IllegalStateException.class)
   ProblemDetail conflict(IllegalStateException exception, HttpServletRequest request) { return problem(HttpStatus.CONFLICT, exception.getMessage(), request); }
   @ExceptionHandler(DataIntegrityViolationException.class)

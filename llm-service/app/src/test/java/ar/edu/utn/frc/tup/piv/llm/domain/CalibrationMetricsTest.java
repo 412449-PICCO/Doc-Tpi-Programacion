@@ -46,4 +46,29 @@ class CalibrationMetricsTest {
   private CalibrationMetrics.CaseScores caseScores(int human, int model) {
     return new CalibrationMetrics.CaseScores(Map.of(AUTONOMY, human, CLARITY, human, PROGRESSION, human, COMPLIANCE, human, EFFICIENCY, human), Map.of(AUTONOMY, model, CLARITY, model, PROGRESSION, model, COMPLIANCE, model, EFFICIENCY, model));
   }
+
+  @Test void assess_shouldRejectMissingOrEmptyCases() {
+    assertThatThrownBy(() -> CalibrationMetrics.assess(List.of(), WEIGHTS)).isInstanceOf(IllegalArgumentException.class).hasMessage("A calibration needs at least one case");
+    assertThatThrownBy(() -> CalibrationMetrics.assess(null, WEIGHTS)).isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test void assess_shouldRejectIncompleteOrOutOfRangeWeights() {
+    var cases = List.of(caseScores(80, 80));
+    assertThatThrownBy(() -> CalibrationMetrics.assess(cases, null)).isInstanceOf(IllegalArgumentException.class).hasMessage("Weights must define the five dimensions");
+    assertThatThrownBy(() -> CalibrationMetrics.assess(cases, Map.of(AUTONOMY, 100))).isInstanceOf(IllegalArgumentException.class).hasMessage("Weights must define the five dimensions");
+    assertThatThrownBy(() -> CalibrationMetrics.assess(cases, Map.of(AUTONOMY, 101, CLARITY, 0, PROGRESSION, 0, COMPLIANCE, 0, EFFICIENCY, 0)))
+        .isInstanceOf(IllegalArgumentException.class).hasMessage("Invalid weight for AUTONOMY");
+    assertThatThrownBy(() -> CalibrationMetrics.assess(cases, Map.of(AUTONOMY, -5, CLARITY, 105, PROGRESSION, 0, COMPLIANCE, 0, EFFICIENCY, 0)))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test void caseScores_shouldRejectIncompleteOrOutOfRangeScores() {
+    var full = Map.of(AUTONOMY, 80, CLARITY, 80, PROGRESSION, 80, COMPLIANCE, 80, EFFICIENCY, 80);
+    assertThatThrownBy(() -> new CalibrationMetrics.CaseScores(null, full)).isInstanceOf(IllegalArgumentException.class).hasMessage("human scores must define the five dimensions");
+    assertThatThrownBy(() -> new CalibrationMetrics.CaseScores(full, Map.of(AUTONOMY, 80))).isInstanceOf(IllegalArgumentException.class).hasMessage("model scores must define the five dimensions");
+    assertThatThrownBy(() -> new CalibrationMetrics.CaseScores(Map.of(AUTONOMY, 101, CLARITY, 80, PROGRESSION, 80, COMPLIANCE, 80, EFFICIENCY, 80), full))
+        .isInstanceOf(IllegalArgumentException.class).hasMessage("Invalid human score for AUTONOMY");
+    assertThatThrownBy(() -> new CalibrationMetrics.CaseScores(full, Map.of(AUTONOMY, 80, CLARITY, -1, PROGRESSION, 80, COMPLIANCE, 80, EFFICIENCY, 80)))
+        .isInstanceOf(IllegalArgumentException.class).hasMessage("Invalid model score for CLARITY");
+  }
 }

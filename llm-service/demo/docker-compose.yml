@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16   # V28 (RAG) necesita la extensión `vector`
     environment:
       POSTGRES_DB: llm
       POSTGRES_USER: llm
@@ -26,7 +26,7 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health | grep -q UP"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8087/actuator/health | grep -q UP"]
       interval: 5s
       timeout: 3s
       retries: 12
