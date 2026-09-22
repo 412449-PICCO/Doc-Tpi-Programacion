@@ -91,6 +91,68 @@ describe('RubricsPage', () => {
     expect(fixture.componentInstance.rubrics.value().items).toHaveLength(2);
   });
 
+  it('loads a modular draft from customDimensions and sends rubricKind plus userPrompt', async () => {
+    const fixture = await createPage(); const http = TestBed.inject(HttpTestingController);
+    const customDimensions = [
+      { key: 'algoritmos', label: 'Algoritmos', criterion: 'Criterio algoritmos', anchors: { low: { behavior: 'b', referenceScore: 25, example: 'e' }, medium: { behavior: 'm', referenceScore: 60, example: 'e' }, high: { behavior: 'a', referenceScore: 90, example: 'e' } }, weight: 60 },
+      { key: 'pruebas', label: 'Pruebas', criterion: 'Criterio pruebas', anchors: { low: { behavior: 'b', referenceScore: 25, example: 'e' }, medium: { behavior: 'm', referenceScore: 60, example: 'e' }, high: { behavior: 'a', referenceScore: 90, example: 'e' } }, weight: 40 },
+    ];
+    http.expectOne(`/api/llm/courses/${courseId}/rubrics`).flush({ items: [{ id: 'rubric-mod', familyId: 'family-1', name: 'Rúbrica modular', version: 1, state: 'DRAFT', revision: 2, rubricKind: 'MODULAR_CUSTOM', userPrompt: 'Guía previa', dimensions: [], customDimensions }] });
+    await fixture.whenStable(); fixture.detectChanges();
+
+    (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('.edit')!.click(); fixture.detectChanges();
+    expect(fixture.componentInstance.isModular()).toBe(true);
+    expect(fixture.componentInstance.dimensions.length).toBe(2);
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('Algoritmos');
+
+    fixture.componentInstance.form.controls.userPrompt.setValue('Priorizar pruebas');
+    fixture.componentInstance.save();
+    const request = http.expectOne(`/api/llm/courses/${courseId}/rubrics/rubric-mod`);
+    expect(request.request.method).toBe('PATCH');
+    expect(request.request.body.rubricKind).toBe('MODULAR_CUSTOM');
+    expect(request.request.body.userPrompt).toBe('Priorizar pruebas');
+    expect(request.request.body.customDimensions).toHaveLength(2);
+    expect(request.request.body.dimensions).toBeUndefined();
+    request.flush({ id: 'rubric-mod', familyId: 'family-1', name: 'Rúbrica modular', version: 1, state: 'DRAFT', revision: 3, rubricKind: 'MODULAR_CUSTOM', userPrompt: 'Priorizar pruebas', dimensions: [], customDimensions });
+    fixture.detectChanges();
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('Borrador guardado. Revisión 3.');
+  });
+
+  it('switches to modular mode and adds or removes dimensions', async () => {
+    const fixture = await createPage(); const http = TestBed.inject(HttpTestingController);
+    http.expectOne(`/api/llm/courses/${courseId}/rubrics`).flush({ items: [{ id: 'rubric-1', familyId: 'family-1', name: 'Uso responsable', version: 1, state: 'DRAFT', revision: 3, dimensions }] });
+    await fixture.whenStable(); fixture.detectChanges();
+    fixture.componentInstance.editDraft({ id: 'rubric-1', familyId: 'family-1', name: 'Uso responsable', version: 1, state: 'DRAFT', revision: 3, dimensions });
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.isModular()).toBe(false);
+    fixture.componentInstance.switchToModular(); fixture.detectChanges();
+    expect(fixture.componentInstance.isModular()).toBe(true);
+    expect(fixture.componentInstance.dimensions.length).toBe(5);
+
+    fixture.componentInstance.addDimension(); fixture.detectChanges();
+    expect(fixture.componentInstance.dimensions.length).toBe(6);
+    expect(fixture.componentInstance.totalWeight()).toBe(100);
+
+    fixture.componentInstance.removeDimension(5); fixture.detectChanges();
+    expect(fixture.componentInstance.dimensions.length).toBe(5);
+
+    fixture.componentInstance.switchToStandard(); fixture.detectChanges();
+    expect(fixture.componentInstance.isModular()).toBe(false);
+  });
+
+  it('blocks saving a modular rubric whose weights do not total 100', async () => {
+    const fixture = await createPage(); const http = TestBed.inject(HttpTestingController);
+    http.expectOne(`/api/llm/courses/${courseId}/rubrics`).flush({ items: [{ id: 'rubric-mod', familyId: 'family-1', name: 'Rúbrica modular', version: 1, state: 'DRAFT', revision: 2, rubricKind: 'MODULAR_CUSTOM', dimensions: [], customDimensions: [{ key: 'algoritmos', label: 'Algoritmos', criterion: 'Criterio', anchors: { low: { behavior: 'b', referenceScore: 25, example: 'e' }, medium: { behavior: 'm', referenceScore: 60, example: 'e' }, high: { behavior: 'a', referenceScore: 90, example: 'e' } }, weight: 100 }] }] });
+    await fixture.whenStable(); fixture.detectChanges();
+    fixture.componentInstance.editDraft({ id: 'rubric-mod', familyId: 'family-1', name: 'Rúbrica modular', version: 1, state: 'DRAFT', revision: 2, rubricKind: 'MODULAR_CUSTOM', dimensions: [], customDimensions: [{ key: 'algoritmos', label: 'Algoritmos', criterion: 'Criterio', anchors: { low: { behavior: 'b', referenceScore: 25, example: 'e' }, medium: { behavior: 'm', referenceScore: 60, example: 'e' }, high: { behavior: 'a', referenceScore: 90, example: 'e' } }, weight: 100 }] });
+    fixture.componentInstance.dimensions.at(0).controls.weight.setValue(90);
+    fixture.componentInstance.save(); fixture.detectChanges();
+
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('Los pesos deben sumar 100 %.');
+    http.expectNone(`/api/llm/courses/${courseId}/rubrics/rubric-mod`);
+  });
+
   it('sends the teacher-selected name when creating a rubric from a template', async () => {
     const fixture = await createPage(); const http = TestBed.inject(HttpTestingController);
     http.expectOne(`/api/llm/courses/${courseId}/rubrics`).flush({ items: [] });

@@ -1,7 +1,7 @@
 <header>
   <p class="eyebrow">RÚBRICAS</p>
   <h1>{{ editorRoute ? (creatingRoute ? 'Nueva rúbrica' : 'Editar rúbrica') : 'Rúbricas versionadas' }}</h1>
-  <p>Las cinco dimensiones obligatorias evalúan el uso pedagógico de IA. Las versiones publicadas son inmutables.</p>
+  <p>Elegí entre la rúbrica institucional de cinco dimensiones o una rúbrica modular con los aspectos que definas. Las versiones publicadas son inmutables.</p>
   @if (editorRoute) { <nav class="editor-breadcrumb" aria-label="Ubicación en Rúbricas"><a [href]="rubricsPath()">Rúbricas</a><span aria-hidden="true">›</span><strong>{{ creatingRoute ? 'Nueva rúbrica' : 'Editar borrador' }}</strong></nav> }
 </header>
 
@@ -120,7 +120,7 @@
           </tr>
         </thead>
         <tbody>
-          @for (dim of compRubric.dimensions; track dim.key) {
+          @for (dim of comparisonDimensions(compRubric); track dim.key) {
             <tr>
               <th scope="row">{{ dim.label || dim.key }}</th>
               <td>{{ dim.criterion }}</td>
@@ -130,8 +130,15 @@
         </tbody>
       </table>
     </div>
+    <p class="weights" [class.invalid]="!comparisonIsBalanced(compRubric)">
+      <span>Puntaje total</span>
+      <strong>{{ comparisonTotal(compRubric) }} / 100 {{ comparisonIsBalanced(compRubric) ? '✓' : '✗' }}</strong>
+    </p>
+    @if (!comparisonIsBalanced(compRubric)) {
+      <p class="field-error" role="alert">El puntaje total debe sumar exactamente 100 puntos (suma actual: {{ comparisonTotal(compRubric) }}).</p>
+    }
     <div style="margin-top: 1.2rem; display: flex; gap: 0.8rem">
-      <button type="button" class="save" (click)="confirmPublish(compRubric)">Confirmar publicación inmutable</button>
+      <button type="button" class="save" (click)="confirmPublish(compRubric)" [disabled]="!comparisonIsBalanced(compRubric)">Confirmar publicación inmutable</button>
       <button type="button" class="secondary" (click)="closePublishComparison()">Cancelar</button>
     </div>
   </section>
@@ -172,28 +179,63 @@
           @if (dimensions.touched && dimensions.hasError('weightsTotal')) {
             <p class="field-error">Los pesos deben sumar 100 %.</p>
           } @else {
-            <p class="summary-help">La suma de las cinco dimensiones debe ser 100 %.</p>
+            <p class="summary-help">{{ isModular() ? 'La suma de las dimensiones debe ser 100 %.' : 'La suma de las cinco dimensiones debe ser 100 %.' }}</p>
           }
         </aside>
       </div>
+
+      <fieldset class="rubric-mode" aria-label="Modalidad de rúbrica">
+        <legend>Modalidad de la rúbrica *</legend>
+        <div class="rubric-mode-options">
+          <label class="rubric-mode-option">
+            <input type="radio" name="rubric-mode" value="DEFAULT_INSTITUTIONAL" [checked]="!isModular()" (change)="switchToStandard()" />
+            <span><strong>Usar Rúbrica Estándar Institucional</strong><small>Mantiene las cinco dimensiones obligatorias de la plataforma.</small></span>
+          </label>
+          <label class="rubric-mode-option">
+            <input type="radio" name="rubric-mode" value="MODULAR_CUSTOM" [checked]="isModular()" (change)="switchToModular()" />
+            <span><strong>Crear Rúbrica Modular</strong><small>Definí tus propios aspectos; la suma de sus pesos debe dar 100 %.</small></span>
+          </label>
+        </div>
+      </fieldset>
+
+      <label class="orienting-message">
+        <span class="field-label" tabindex="0">Mensaje orientador de la corrección <span class="field-tooltip" role="tooltip">Indicaciones pedagógicas para quien corrija: qué priorizar, qué penalizar, qué lenguaje exigir.</span></span>
+        <textarea formControlName="userPrompt" rows="3" placeholder="Ej.: exigir justificación teórica al usar primitivas de bajo nivel; penalizar bucles de espera activa."></textarea>
+      </label>
 
       <nav class="dimension-tabs" aria-label="Dimensiones de la rúbrica">
         <p>Elegí una dimensión para editar</p>
         <div [class.active-tab-0]="activeDimensionIndex() === 0" [class.active-tab-1]="activeDimensionIndex() === 1" [class.active-tab-2]="activeDimensionIndex() === 2" [class.active-tab-3]="activeDimensionIndex() === 3" [class.active-tab-4]="activeDimensionIndex() === 4">
           @for (dimension of dimensions.controls; track dimension.controls.key.value; let i = $index) {
-            <button type="button" [class.active]="activeDimensionIndex() === i" [attr.aria-pressed]="activeDimensionIndex() === i" [attr.aria-label]="'Editar dimensión ' + dimension.controls.label.value" (click)="selectDimension(i)">
-              <span>{{ dimension.controls.label.value }}</span>
+            <button type="button" [class.active]="activeDimensionIndex() === i" [attr.aria-pressed]="activeDimensionIndex() === i" [attr.aria-label]="'Editar dimensión ' + (dimension.controls.label.value || dimension.controls.key.value)" (click)="selectDimension(i)">
+              <span>{{ dimension.controls.label.value || dimension.controls.key.value }}</span>
             </button>
           }
           <span class="dimension-tab-indicator" aria-hidden="true"></span>
         </div>
+        @if (isModular()) {
+          <div class="dimension-actions">
+            <button type="button" class="secondary" (click)="addDimension()">+ Agregar aspecto</button>
+            <button type="button" class="secondary" (click)="removeDimension(activeDimensionIndex())" [disabled]="dimensions.length <= 1">Eliminar aspecto actual</button>
+          </div>
+        }
       </nav>
 
       <div formArrayName="dimensions">
         @for (dimension of dimensions.controls; track dimension.controls.key.value; let i = $index) {
           @if (activeDimensionIndex() === i) {
           <fieldset [formGroupName]="i" class="dimension-panel">
-            <legend>{{ dimension.controls.label.value }}</legend>
+            <legend>{{ dimension.controls.label.value || dimension.controls.key.value }}</legend>
+            @if (isModular()) {
+              <label>
+                <span class="field-label" tabindex="0">Título del aspecto * <span class="field-tooltip" role="tooltip">Nombrá el aspecto que vas a calificar (por ejemplo: Sincronización y semáforos).</span></span>
+                <input formControlName="label" required [attr.aria-invalid]="dimension.controls.label.invalid && dimension.controls.label.touched" />
+              </label>
+              <label>
+                <span class="field-label" tabindex="0">Clave técnica * <span class="field-tooltip" role="tooltip">Identificador único del aspecto dentro de la rúbrica. No puede repetirse.</span></span>
+                <input formControlName="key" required [attr.aria-invalid]="dimension.controls.key.invalid && dimension.controls.key.touched" />
+              </label>
+            }
             <label class="dimension-weight">
               <span class="field-label" tabindex="0">Peso * <span class="field-tooltip" role="tooltip">Define cuánto aporta esta dimensión al resultado final. Los cinco pesos deben sumar 100 %.</span></span>
               <input formControlName="weight" type="number" min="0" max="100" step="0.01" required [attr.aria-invalid]="dimension.controls.weight.invalid && dimension.controls.weight.touched" />

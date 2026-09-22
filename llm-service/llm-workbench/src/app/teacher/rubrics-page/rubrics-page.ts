@@ -7,6 +7,7 @@ import { catchError, finalize, of } from 'rxjs';
 import { ToastService } from '../toast.service';
 
 type AnchorLevel = 'low' | 'medium' | 'high';
+type RubricKind = 'DEFAULT_INSTITUTIONAL' | 'MODULAR_CUSTOM';
 interface Anchor { behavior: string; referenceScore: number; example: string; }
 interface Anchors { low: Anchor; medium: Anchor; high: Anchor; }
 type AnchorControls = { behavior: FormControl<string>; referenceScore: FormControl<number>; example: FormControl<string>; };
@@ -48,7 +49,8 @@ export class RubricsPage {
   readonly templates = httpResource<RubricPage>(() => '/api/llm/rubric-templates', { defaultValue: { items: [] } });
   readonly templateVersionId = signal('');
   readonly newRubricName = signal('');
-  readonly form = this.formBuilder.group({ name: ['', Validators.required], dimensions: this.formBuilder.array<DimensionForm>([], { validators: weightsTotal100 }) });
+  readonly modular = signal(false);
+  readonly form = this.formBuilder.group({ name: ['', Validators.required], rubricKind: ['DEFAULT_INSTITUTIONAL' as RubricKind], userPrompt: [''], dimensions: this.formBuilder.array<DimensionForm>([], { validators: weightsTotal100 }) });
   private returnToListTimer: ReturnType<typeof setTimeout> | null = null;
   constructor() {
     effect(() => { const id = this.editingVersionId; const rubric = this.rubrics.value().items.find(item => item.id === id); if (id && rubric && this.selected()?.id !== id) this.editDraft(rubric); });
@@ -56,12 +58,60 @@ export class RubricsPage {
   }
   get dimensions(): FormArray<DimensionForm> { return this.form.controls.dimensions; }
   totalWeight(): number { return this.dimensions.controls.reduce((total, dimension) => total + dimension.controls.weight.value, 0); }
-  editDraft(rubric: RubricVersion): void { this.selected.set(rubric); this.saved.set(false); this.saveError.set(''); this.activeDimensionIndex.set(0); this.dimensions.clear(); rubric.dimensions.forEach(dimension => this.dimensions.push(this.createDimension(dimension))); this.form.controls.name.setValue(rubric.name); this.form.markAsPristine(); }
+  isModular(): boolean { return this.modular(); }
+  isBalanced(): boolean { return this.totalWeight() === 100; }
+  editDraft(rubric: RubricVersion): void {
+    const modular = (rubric.rubricKind ?? 'DEFAULT_INSTITUTIONAL') === 'MODULAR_CUSTOM';
+    this.selected.set(rubric); this.saved.set(false); this.saveError.set(''); this.activeDimensionIndex.set(0);
+    this.modular.set(modular);
+    this.form.controls.rubricKind.setValue(rubric.rubricKind === 'MODULAR_CUSTOM' ? 'MODULAR_CUSTOM' : 'DEFAULT_INSTITUTIONAL');
+    this.form.controls.userPrompt.setValue(rubric.userPrompt ?? '');
+    this.dimensions.clear();
+    const source = modular ? (rubric.customDimensions ?? []) : rubric.dimensions;
+    source.forEach(dimension => this.dimensions.push(this.createDimension(dimension)));
+    this.form.controls.name.setValue(rubric.name);
+    this.form.markAsPristine();
+  }
   openEditor(rubric: RubricVersion): void { this.editDraft(rubric); void this.router?.navigateByUrl(`${this.rubricsPath()}/${rubric.id}/edit`).catch(() => undefined); }
   closeEditor(): void { this.clearReturnToListTimer(); this.selected.set(null); this.saved.set(false); this.saveError.set(''); }
+  switchToModular(): void {
+    if (this.modular()) return;
+    this.modular.set(true);
+    this.form.controls.rubricKind.setValue('MODULAR_CUSTOM');
+    if (this.dimensions.length === 0) this.addDimension();
+    this.form.markAsDirty();
+  }
+  switchToStandard(): void {
+    if (!this.modular()) return;
+    const persisted = this.selected();
+    if (!persisted || persisted.dimensions.length !== 5) { this.toast.error('No hay dimensiones institucionales para restaurar en este borrador.'); return; }
+    this.modular.set(false);
+    this.form.controls.rubricKind.setValue('DEFAULT_INSTITUTIONAL');
+    this.dimensions.clear();
+    persisted.dimensions.forEach(dimension => this.dimensions.push(this.createDimension(dimension)));
+    this.activeDimensionIndex.set(0);
+    this.form.markAsDirty();
+  }
+  addDimension(): void {
+    const key = 'DIM_' + (this.dimensions.length + 1);
+    this.dimensions.push(this.createDimension({ key, label: 'Nueva dimensión', criterion: '', anchors: { low: { behavior: '', referenceScore: 25, example: '' }, medium: { behavior: '', referenceScore: 60, example: '' }, high: { behavior: '', referenceScore: 90, example: '' } }, weight: 0 }));
+    this.activeDimensionIndex.set(this.dimensions.length - 1);
+  }
+  removeDimension(index: number): void {
+    if (this.dimensions.length > 1) {
+      this.dimensions.removeAt(index);
+      if (this.activeDimensionIndex() >= this.dimensions.length) this.activeDimensionIndex.set(this.dimensions.length - 1);
+    } else {
+      this.toast.error('Una rúbrica modular debe tener al menos una dimensión.');
+    }
+  }
   openPublishComparison(rubric: RubricVersion): void { this.comparingRubric.set(rubric); }
   closePublishComparison(): void { this.comparingRubric.set(null); }
+  comparisonDimensions(rubric: RubricVersion): DimensionInput[] { return (rubric.rubricKind ?? 'DEFAULT_INSTITUTIONAL') === 'MODULAR_CUSTOM' ? (rubric.customDimensions ?? []) : rubric.dimensions; }
+  comparisonTotal(rubric: RubricVersion): number { return this.comparisonDimensions(rubric).reduce((total, dimension) => total + Number(dimension.weight || 0), 0); }
+  comparisonIsBalanced(rubric: RubricVersion): boolean { return this.comparisonTotal(rubric) === 100; }
   confirmPublish(rubric: RubricVersion): void {
+    if (!this.comparisonIsBalanced(rubric)) { this.notifyError('El puntaje total debe sumar exactamente 100 puntos.'); return; }
     let failed = false;
     this.http.post<void>(`/api/llm/courses/${this.courseId()}/rubrics/${rubric.id}/publish`, {}).pipe(
       catchError(() => { this.notifyError('No se pudo publicar la versión de la rúbrica.'); failed = true; return of(null); })
@@ -103,7 +153,7 @@ export class RubricsPage {
       finalize(() => this.creating.set(false)),
     ).subscribe((created) => { if (created) { this.toast.success('Borrador de rúbrica creado.'); this.rubrics.reload(); void this.router?.navigateByUrl(`${this.rubricsPath()}/${created.id}/edit`).catch(() => undefined); } });
   }
-  save(): void { const rubric = this.selected(); if (!rubric) return; if (this.form.invalid) { this.form.markAllAsTouched(); this.saveError.set('Completá los campos obligatorios y verificá que los pesos sumen 100 %.'); this.toast.error('No se pudo guardar: revisá los campos obligatorios.'); return; } this.saving.set(true); this.saved.set(false); this.saveError.set(''); this.http.patch<RubricVersion>(`/api/llm/courses/${this.courseId()}/rubrics/${rubric.id}`, this.form.getRawValue(), { headers: { 'If-Match': String(rubric.revision) } }).pipe(catchError(error => { const message = error.status === 409 ? 'El borrador cambió en otro dispositivo. Recargá antes de guardar.' : error.error?.detail ?? 'No se pudo guardar el borrador. Intentá nuevamente.'; this.saveError.set(message); this.toast.error(message); return of(null); }), finalize(() => this.saving.set(false))).subscribe(updated => { if (!updated) return; this.selected.set(updated); this.rubrics.update(page => ({ items: page.items.map(item => item.id === updated.id ? updated : item) })); this.form.markAsPristine(); this.saved.set(true); this.toast.success('Borrador guardado.', 3000); this.scheduleReturnToList(); }); }
+  save(): void { const rubric = this.selected(); if (!rubric) return; if (this.form.invalid) { this.form.markAllAsTouched(); this.saveError.set('Completá los campos obligatorios y verificá que los pesos sumen 100 %.'); this.toast.error('No se pudo guardar: revisá los campos obligatorios.'); return; } this.saving.set(true); this.saved.set(false); this.saveError.set(''); const raw = this.form.getRawValue(); const payload = this.modular() ? { name: raw.name, rubricKind: 'MODULAR_CUSTOM', userPrompt: raw.userPrompt, customDimensions: raw.dimensions } : { name: raw.name, rubricKind: 'DEFAULT_INSTITUTIONAL', userPrompt: raw.userPrompt, dimensions: raw.dimensions }; this.http.patch<RubricVersion>(`/api/llm/courses/${this.courseId()}/rubrics/${rubric.id}`, payload, { headers: { 'If-Match': String(rubric.revision) } }).pipe(catchError(error => { const message = error.status === 409 ? 'El borrador cambió en otro dispositivo. Recargá antes de guardar.' : error.error?.detail ?? 'No se pudo guardar el borrador. Intentá nuevamente.'; this.saveError.set(message); this.toast.error(message); return of(null); }), finalize(() => this.saving.set(false))).subscribe(updated => { if (!updated) return; this.selected.set(updated); this.modular.set(updated.rubricKind === 'MODULAR_CUSTOM'); this.rubrics.update(page => ({ items: page.items.map(item => item.id === updated.id ? updated : item) })); this.form.markAsPristine(); this.saved.set(true); this.toast.success('Borrador guardado.', 3000); this.scheduleReturnToList(); }); }
   stateLabel(state: string): string { return state === 'DRAFT' ? 'Borrador' : state === 'PUBLISHED' ? 'Publicada' : state === 'SUPERSEDED' ? 'Reemplazada' : state; }
   anchor(level: AnchorLevel, anchor?: Anchor): FormGroup<AnchorControls> { return this.formBuilder.group<AnchorControls>({ behavior: this.formBuilder.control(anchor?.behavior ?? '', Validators.required), referenceScore: this.formBuilder.control(anchor?.referenceScore ?? (level === 'low' ? 25 : level === 'medium' ? 60 : 90), [Validators.required, Validators.min(0), Validators.max(100)]), example: this.formBuilder.control(anchor?.example ?? '', Validators.required) }); }
   private notifyError(message: string): void { this.toast.error(message); }
@@ -117,8 +167,8 @@ export class RubricsPage {
     this.returnToListTimer = null;
     this.returningToRubrics.set(false);
   }
-  private createDimension(dimension: DimensionInput): DimensionForm { return this.formBuilder.group<DimensionControls>({ key: this.formBuilder.control(dimension.key), label: this.formBuilder.control(dimension.label), criterion: this.formBuilder.control(dimension.criterion, Validators.required), anchors: this.formBuilder.group({ low: this.anchor('low', dimension.anchors?.low), medium: this.anchor('medium', dimension.anchors?.medium), high: this.anchor('high', dimension.anchors?.high) }, { validators: anchorsOrdered }), weight: this.formBuilder.control(dimension.weight, [Validators.required, Validators.min(0.01), Validators.max(100)]) }); }
+  private createDimension(dimension: DimensionInput): DimensionForm { return this.formBuilder.group<DimensionControls>({ key: this.formBuilder.control(dimension.key), label: this.formBuilder.control(dimension.label, Validators.required), criterion: this.formBuilder.control(dimension.criterion, Validators.required), anchors: this.formBuilder.group({ low: this.anchor('low', dimension.anchors?.low), medium: this.anchor('medium', dimension.anchors?.medium), high: this.anchor('high', dimension.anchors?.high) }, { validators: anchorsOrdered }), weight: this.formBuilder.control(dimension.weight, [Validators.required, Validators.min(0.01), Validators.max(100)]) }); }
 }
 interface RubricPage { items: RubricVersion[]; }
-interface RubricVersion { id: string; familyId: string; name: string; version: number; state: string; revision: number; templateOriginVersionId?: string; dimensions: DimensionInput[]; }
+interface RubricVersion { id: string; familyId: string; name: string; version: number; state: string; revision: number; templateOriginVersionId?: string; rubricKind?: string; userPrompt?: string; dimensions: DimensionInput[]; customDimensions?: DimensionInput[]; }
 interface DimensionInput { key: string; label: string; criterion: string; anchors: Anchors; weight: number; }

@@ -645,6 +645,48 @@ legend {
   font-weight: 700;
 }
 
+.rubric-mode {
+  margin-top: 1rem;
+
+  legend { font-weight: 700; }
+
+  .rubric-mode-options {
+    display: grid;
+    gap: 0.6rem;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+  }
+
+  .rubric-mode-option {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+    margin-top: 0;
+    border: 1px solid #c7d3cd;
+    border-radius: 0.4rem;
+    padding: 0.7rem;
+    background: #fff;
+    font-weight: 400;
+
+    input {
+      width: auto;
+      margin-top: 0.2rem;
+    }
+
+    span { display: grid; gap: 0.15rem; }
+    strong { font-weight: 700; }
+    small { color: #52666a; font-weight: 400; }
+  }
+}
+
+.orienting-message { margin-top: 1rem; }
+
+.dimension-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.65rem;
+}
+
 @media (max-width: 600px) {
   .editor {
     max-height: none;
