@@ -1,5 +1,7 @@
 package ar.edu.utn.frc.tup.piv.llm.application.service;
 
+import ar.edu.utn.frc.tup.piv.llm.application.exception.ResourceNotFoundException;
+
 import ar.edu.utn.frc.tup.piv.llm.domain.CalibrationMetrics.Dimension;
 import ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.RubricVersionRepository;
 import ar.edu.utn.frc.tup.piv.llm.application.model.CallerIdentity;
@@ -21,7 +23,7 @@ public class RubricDraftService {
 
   @Transactional(readOnly = true)
   public RubricVersion get(UUID courseId, UUID versionId) { return rubrics.find(courseId, versionId)
-      .orElseThrow(() -> new IllegalStateException("La rúbrica no existe en el curso")); }
+      .orElseThrow(() -> new ResourceNotFoundException("La rúbrica no existe en el curso")); }
 
   @Transactional
   public RubricVersion createFromTemplate(UUID courseId, UUID templateVersionId, String name, CallerIdentity actor) {

@@ -4,14 +4,16 @@
 > 2026-09-12 portando `LlmGateway`/`GroqAdapter` de
 > [`codigo-ejemplo/ms-evaluacion-llm`](../codigo-ejemplo/ms-evaluacion-llm.md) (carpeta ya
 > eliminada, ver [`codigo-ejemplo/README.md`](../codigo-ejemplo/README.md)) a
-> `llm-service/domain/ai/` + `infrastructure/ai/`.
+> `llm-service/domain/ai/` + `infrastructure/ai/`. Tras la [integración del 2026-09-21](../../../registro/2026-09-21-integracion-main-a-dev.md)
+> esas rutas son `app/src/main/java/.../domain/ai/` + `adapter/out/ai/`, y los proveedores reales viven
+> en los módulos `provider-*`.
 
 ## Índice
 
 | ID | Título | Estado | Nota en una línea |
 |---|---|---|---|
 | [H10](h10.md) | Puerto del proveedor de modelos (AI Gateway) y fake para pruebas | 🟢 | 6 de 6 tareas — portado de `codigo-ejemplo/ms-evaluacion-llm` |
-| H02 | Proveedor real (Groq) detrás del puerto | 🟡 | `GroqModelAdapter` (langchain4j) seleccionado por `function_model_config`. **Verificado en vivo el 2026-09-19** con `openai/gpt-oss-20b` sobre el compose real: el tutor responde en español y de forma socrática (0,9-2,4 s) y no entrega el código aunque se lo pidan; el evaluador pasa el schema y da 90 a un intento bueno y 25 a uno malo; el camino `SCORE_DEFERRED` funciona. Para el evaluador, el adaptador saca el JSON de respuestas envueltas en ```json o con texto alrededor (`JsonObjectExtractor`); el tutor no se toca. El `modelId` de `PUT /model-assignments/{function}` ahora se respeta: el adaptador de Groq usa el modelo asignado a la función y `GROQ_MODEL` queda solo como valor por defecto (antes lo ignoraba y el registro de uso anotaba un modelo que no era el invocado). 🟡 **El evaluador devuelve el mismo valor en las cinco dimensiones** (copia un ancla de la rúbrica), lo que no discrimina: hay que calibrarlo contra el golden set antes de confiar en el desglose. La verificación en vivo es manual: CI no tiene `GROQ_API_KEY` |
+| H02 | Proveedor real (Groq) detrás del puerto | 🕓 | **La implementación descrita acá ya no existe.** La [integración del 2026-09-21](../../../registro/2026-09-21-integracion-main-a-dev.md) reemplazó `GroqModelAdapter` por el SPI de proveedores: Groq se configura ahora como credencial OpenAI-compatible (`POST /admin/provider-credentials`, cifrada en base), no por `GROQ_API_KEY`. Quedaron huérfanos el bloque `llm.provider.groq.*` de `application.yml` y el overlay `compose.groq.yaml`: ninguna clase los lee. Sigue valiendo lo **verificado en vivo el 2026-09-19** con `openai/gpt-oss-20b`, porque describe al modelo y no al adaptador: el tutor responde en español y de forma socrática (0,9-2,4 s) y no entrega el código aunque se lo pidan; el evaluador pasa el schema y da 90 a un intento bueno y 25 a uno malo; el camino `SCORE_DEFERRED` funciona. 🟡 **El evaluador devuelve el mismo valor en las cinco dimensiones** (copia un ancla de la rúbrica), lo que no discrimina: hay que calibrarlo contra el golden set antes de confiar en el desglose. **Pendiente:** rehacer la verificación en vivo contra el SPI, y decidir si se borra la configuración huérfana |
 | [H03](h03.md) | Resiliencia síncrona: reintentos, circuit breaker, presupuesto, uso | 🟡 | Construida **con mocks/hardcodeo** (2026-09-19): reintentos + breaker por proveedor reales; presupuesto y registro de uso en memoria — detalle en [`h03.md`](h03.md) |
 | [model-deployments](model-deployments.md) | Catálogo de despliegues de modelo (sin ficha) | 🔴 | `ModelDeploymentController.listAdapters` devuelve proveedores hardcodeados — **sin tocar**, es otro catálogo (por curso), no el `function_model_config` de H10 |
 

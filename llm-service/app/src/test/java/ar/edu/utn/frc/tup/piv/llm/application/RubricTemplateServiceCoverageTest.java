@@ -7,6 +7,7 @@ import ar.edu.utn.frc.tup.piv.llm.application.service.RubricDraftService.Anchors
 import ar.edu.utn.frc.tup.piv.llm.application.service.RubricDraftService.DimensionInput;
 import ar.edu.utn.frc.tup.piv.llm.application.service.RubricDraftService.RubricInput;
 import ar.edu.utn.frc.tup.piv.llm.application.service.RubricDraftService.RubricVersion;
+import ar.edu.utn.frc.tup.piv.llm.application.exception.ResourceNotFoundException;
 import ar.edu.utn.frc.tup.piv.llm.domain.CalibrationMetrics.Dimension;
 import java.math.BigDecimal;
 import java.util.List;
@@ -36,7 +37,7 @@ class RubricTemplateServiceCoverageTest {
         new RubricVersion(id, UUID.randomUUID(), 1, "Plantilla", "DRAFT", 1, null, templates())));
     assertThat(service.get(id).id()).isEqualTo(id);
     when(repository.findTemplate(id)).thenReturn(Optional.empty());
-    assertThatThrownBy(() -> service.get(id)).isInstanceOf(IllegalStateException.class).hasMessage("La plantilla no existe");
+    assertThatThrownBy(() -> service.get(id)).isInstanceOf(ResourceNotFoundException.class).hasMessage("La plantilla no existe");
   }
 
   @Test void rejectsBlankTemplateNames() {
@@ -84,7 +85,7 @@ class RubricTemplateServiceCoverageTest {
     when(repository.advanceTemplateRevision(id, 3)).thenReturn(true);
     when(repository.findTemplate(id)).thenReturn(Optional.empty());
     assertThatThrownBy(() -> service.update(id, 3, new RubricInput("Plantilla", templates())))
-        .isInstanceOf(IllegalStateException.class).hasMessage("La plantilla no existe");
+        .isInstanceOf(ResourceNotFoundException.class).hasMessage("La plantilla no existe");
   }
 
   @Test void refusesPublishingNonDraftTemplates() {
@@ -95,7 +96,7 @@ class RubricTemplateServiceCoverageTest {
 
   @Test void refusesPublishingMissingTemplate() {
     when(repository.findTemplate(UUID.randomUUID())).thenReturn(Optional.empty());
-    assertThatThrownBy(() -> service.publish(UUID.randomUUID())).isInstanceOf(IllegalStateException.class).hasMessage("La plantilla no existe");
+    assertThatThrownBy(() -> service.publish(UUID.randomUUID())).isInstanceOf(ResourceNotFoundException.class).hasMessage("La plantilla no existe");
   }
 
   @Test void rejectsPublishWhenWeightsDoNotTotalOneHundred() {

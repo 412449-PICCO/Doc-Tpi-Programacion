@@ -92,6 +92,8 @@ class CalibrationMetricsTest {
   @Test void caseScores_shouldRejectInvalidModelScores() {
     assertThatThrownBy(() -> new CalibrationMetrics.CaseScores(validHuman(), null))
         .isInstanceOf(IllegalArgumentException.class).hasMessage("model scores must define the five dimensions");
+    assertThatThrownBy(() -> new CalibrationMetrics.CaseScores(validHuman(), Map.of(AUTONOMY, 80)))
+        .isInstanceOf(IllegalArgumentException.class).hasMessage("model scores must define the five dimensions");
     Map<CalibrationMetrics.Dimension, Integer> negative = new HashMap<>(validModel());
     negative.put(AUTONOMY, -5);
     assertThatThrownBy(() -> new CalibrationMetrics.CaseScores(validHuman(), negative))

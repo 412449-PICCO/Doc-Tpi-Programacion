@@ -21,7 +21,7 @@ que nadie más usa.
 - `eventType` en `MAYÚSCULAS_CON_GUION_BAJO`.
 - Bus `event-bus:29092` (`KAFKA_BOOTSTRAP`); `group-id` = nombre del servicio.
 - Los grupos no crean tópicos: los nombres de `llm-service` son **provisorios** hasta que Notificaciones los asigne.
-- Sin tópico `.dlt`: los mensajes rechazados quedan en la tabla `event_dead_letter` (migración V32).
+- Sin tópico `.dlt`: los mensajes rechazados quedan en la tabla `event_dead_letter` (migración `V38` tras la [integración del 2026-09-21](2026-09-21-integracion-main-a-dev.md); era la `V32` cuando se escribió este registro).
 - Se conservan (el PDF no los contradice): Message Key por dominio, outbox, dedup por `eventId`, headers `traceparent` y
   `X-Request-Id`.
 

@@ -29,6 +29,7 @@ class CalibrationStateMachineTest {
     assertThat(CalibrationStateMachine.canActivate(PASSED)).isTrue();
     assertThat(CalibrationStateMachine.canActivate(RUNNING)).isFalse();
     assertThat(CalibrationStateMachine.canActivate(QUEUED)).isFalse();
+    assertThat(CalibrationStateMachine.canActivate(FAILED)).isFalse();
   }
   @Test void resume_shouldRequireValidCalibrationAndQueuedEvaluation() {
     assertThat(CalibrationStateMachine.resume(EvaluationState.QUEUED, true)).isEqualTo(EvaluationState.RUNNING);

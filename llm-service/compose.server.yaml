@@ -58,7 +58,7 @@ services:
   llm-service:
     # Imagen publicada. Fijar siempre un tag exacto (v1, v2, ...): nada de latest.
     image: iwachito/llm-service:${LLM_IMAGE_TAG:-v1}
-    container_name: tpi-llm
+    container_name: llm-service
     # Comparte el namespace de red del sidecar Tailscale:
     # SIN ports:, SIN networks:, SIN dns:, SIN extra_hosts:.
     network_mode: "service:mesh-client"

@@ -435,6 +435,9 @@ parece contradecir a otra, probablemente sea una de estas.
 
 ### ADR-019 — Árbol de paquetes, fronteras de dependencia y variables de entorno de `llm-service`
 
+> **Histórico (2026-09-21):** describe el árbol plano anterior a la integración multi-módulo. Para el
+> código vigente ver [ADR-003 local](adr/ADR-003-estructura-multimodulo-y-variables-de-entorno.md).
+
 **Decisión:** `llm-service` mantiene ocho fronteras de paquete (fuente: playbook de construcción,
 [06 §4](../07-planificacion-y-trabajo-equipo/06-playbook-de-construccion.md)): `api`, `application`,
 `domain`, `infrastructure/persistence`, `infrastructure/messaging`, `infrastructure/ai`, `security`

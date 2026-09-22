@@ -1,6 +1,6 @@
 # ADR-001 — Arquitectura y convenciones técnicas de `llm-service`
 
-- **Estado:** Aceptado el 2026-09-19 por Facundo Soria (revisión y aprobación directa en la sesión de trabajo, sin PR formal)
+- **Estado:** Aceptado el 2026-09-19 por Facundo Soria (revisión y aprobación directa en la sesión de trabajo, sin PR formal). **Parcialmente superado el 2026-09-21 por [ADR-003](ADR-003-estructura-multimodulo-y-variables-de-entorno.md)** en §1, §2 y §4 (paquetes, regla de dependencias y variables tras la integración multi-módulo); §3 sigue vigente. El texto original no se edita.
 - **Fecha:** 2026-09-18
 - **Autores:** equipo G03 (pareja P1)
 - **Historia:** LLM-EP01-H01

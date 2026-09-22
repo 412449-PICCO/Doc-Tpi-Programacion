@@ -9,7 +9,7 @@
 > (`demoLLMSpringAi`), documentada como spike en
 > [`docs/31-spike-decodificacion-imagenes-y-rag-multifuente.md`](../../../../03-capacidades-de-ia/rag-e-ingesta/02-spike-rag-multifuente.md).
 > No depende de S14/S15 (moderación, EP-08) — depende únicamente de que exista `pgvector` en la
-> base (ya lo trae `V14__tutor_conversations_and_rag.sql`).
+> base (ya lo trae `V28__tutor_conversations_and_rag.sql`).
 >
 > **Alcance de esta pasada vs. el paquete completo de S14/S15.** El catálogo de S14 pide
 > `pgvector` + ONNX local para embeddings — acá solo hay un adaptador **fake** (`EmbeddingPort`,

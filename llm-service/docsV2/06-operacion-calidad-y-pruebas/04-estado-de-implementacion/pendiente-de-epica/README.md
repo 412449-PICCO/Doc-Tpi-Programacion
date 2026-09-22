@@ -15,4 +15,4 @@
 
 | Subsistema | Código | Estado | Épica tentativa |
 |---|---|---|---|
-| [course-context](course-context.md) | `CourseContextController` | ⚪ | Utilitario — no aplica una épica de negocio |
+| [course-context](course-context.md) | `CourseContextController` (borrado) | 🕓 | Resuelto por eliminación en la integración del 2026-09-21: los cursos se resuelven contra courses-service |

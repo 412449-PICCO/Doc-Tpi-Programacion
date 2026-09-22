@@ -5,7 +5,7 @@
 - **Diseño y decisiones:** [`04-shadow-del-evaluador.md`](../../../03-capacidades-de-ia/golden-set-y-calibracion/04-shadow-del-evaluador.md)
 - **Código:** `llm-service/.../llm/shadow/` (`ShadowRunController`, `ShadowRunService`, `ShadowEvaluationRunner`,
   `ShadowRunWorker`, `ShadowMetrics`, `JdbcShadowRunStore`, `GoldenSetShadowSource`, `TutorConversationShadowSource`),
-  migración `V31__shadow_evaluation.sql`, y `EvaluatorPrompt` (extraído de `CalibrationEvaluationRunner` para que
+  migración `V37__shadow_evaluation.sql`, y `EvaluatorPrompt` (extraído de `CalibrationEvaluationRunner` para que
   calibración y shadow midan lo mismo).
 
 ## Qué hace hoy

@@ -3,6 +3,7 @@ package ar.edu.utn.frc.tup.piv.llm.application.service;
 import ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.AuditRepository;
 import ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.CalibrationReproducibilityRepository;
 import ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.CalibrationRunRepository;
+import ar.edu.utn.frc.tup.piv.llm.application.exception.ResourceNotFoundException;
 import ar.edu.utn.frc.tup.piv.llm.application.model.CallerIdentity;
 import java.util.List;
 import java.util.Optional;
@@ -52,7 +53,7 @@ class CalibrationRunServiceCoverageTest {
     UUID course = UUID.randomUUID(), runId = UUID.randomUUID();
     when(runs.find(course, runId)).thenReturn(Optional.empty());
     assertThatThrownBy(() -> service.get(course, runId))
-        .isInstanceOf(IllegalStateException.class)
+        .isInstanceOf(ResourceNotFoundException.class)
         .hasMessage("La calibración no existe en el curso");
   }
 

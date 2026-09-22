@@ -36,6 +36,16 @@
 > épica. Igual que aclara `verificacion-v2-golden-set-calibracion.md`: esto es una foto, no una
 > promesa — se re-audita cuando hace falta, no automáticamente.
 
+> **🟢 2026-09-21 — integración `main` → `dev`.** Las fichas de abajo se auditaron contra el árbol
+> anterior a la integración. Lo que cambió para este tablero: EP-02 H02 pasa a 🕓 (`GroqModelAdapter`
+> ya no existe, los proveedores reales son los módulos `provider-*`), `course-context` se resuelve
+> por eliminación, y las migraciones de `dev` se renumeraron +6 (la `V27` de moderación es hoy la
+> `V33`, la `V31` de shadow es la `V37`). Lo verificado sobre el código integrado:
+> **674 tests unitarios + 99 de integración en verde**, build de los 6 módulos, 82 rutas HTTP (una
+> más que `dev`). El detalle, la tabla de qué reemplazó a qué y los pendientes que quedaron
+> abiertos están en el [registro de la integración](../../registro/2026-09-21-integracion-main-a-dev.md).
+> El resto de los estados por épica **no se re-auditó**: siguen siendo la foto de su última fecha.
+
 ## Leyenda de estado
 
 | Ícono | Significa |

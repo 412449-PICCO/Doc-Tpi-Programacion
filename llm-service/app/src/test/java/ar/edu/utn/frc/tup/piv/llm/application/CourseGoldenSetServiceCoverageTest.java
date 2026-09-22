@@ -6,6 +6,7 @@ import ar.edu.utn.frc.tup.piv.llm.domain.goldenset.GoldenSetCaseDetail;
 import ar.edu.utn.frc.tup.piv.llm.domain.goldenset.GoldenSetCaseInput;
 import ar.edu.utn.frc.tup.piv.llm.domain.goldenset.GoldenSetCaseSummary;
 import ar.edu.utn.frc.tup.piv.llm.domain.goldenset.GoldenSetDetail;
+import ar.edu.utn.frc.tup.piv.llm.application.exception.ResourceNotFoundException;
 import ar.edu.utn.frc.tup.piv.llm.application.model.CallerIdentity;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
@@ -130,7 +131,7 @@ class CourseGoldenSetServiceCoverageTest {
     UUID course = UUID.randomUUID(), version = UUID.randomUUID();
     when(repository.countCases(version)).thenReturn(3);
     when(repository.findDetail(course, version)).thenReturn(Optional.empty());
-    assertThatThrownBy(() -> service.publish(course, version, actor)).isInstanceOf(IllegalStateException.class).hasMessage("El Golden Set no existe");
+    assertThatThrownBy(() -> service.publish(course, version, actor)).isInstanceOf(ResourceNotFoundException.class).hasMessage("El Golden Set no existe");
   }
 
   @Test void publishesWithAuditAndExpirationCollaborators() {
@@ -179,7 +180,7 @@ class CourseGoldenSetServiceCoverageTest {
     when(repository.findDetail(course, version)).thenReturn(Optional.of(detail));
     assertThat(service.get(course, version)).isEqualTo(detail);
     when(repository.findDetail(course, version)).thenReturn(Optional.empty());
-    assertThatThrownBy(() -> service.get(course, version)).isInstanceOf(IllegalStateException.class).hasMessage("El Golden Set no existe en el curso");
+    assertThatThrownBy(() -> service.get(course, version)).isInstanceOf(ResourceNotFoundException.class).hasMessage("El Golden Set no existe en el curso");
   }
 
   @Test void updatesDraftCaseWithDelegatedAuthor() throws Exception {

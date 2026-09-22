@@ -20,7 +20,7 @@ services:
 
   llm-service:
     build: .
-    container_name: tpi-llm
+    container_name: llm-service
     expose:
       - "8086"
       - "8087"

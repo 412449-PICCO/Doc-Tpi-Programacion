@@ -1,5 +1,7 @@
 package ar.edu.utn.frc.tup.piv.llm.application.service;
 
+import ar.edu.utn.frc.tup.piv.llm.application.exception.ResourceNotFoundException;
+
 import ar.edu.utn.frc.tup.piv.llm.domain.RubricValidator;
 import ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.AuditRepository;
 import ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.RubricVersionRepository;
@@ -30,7 +32,7 @@ public class RubricPublicationService {
     }
     RubricValidator.validateForPublication(dimensions);
     var version = rubrics.find(courseId, versionId)
-        .orElseThrow(() -> new IllegalStateException("La rúbrica no existe en el curso"));
+        .orElseThrow(() -> new ResourceNotFoundException("La rúbrica no existe en el curso"));
     validateAnchors(version.dimensions());
     if (!rubrics.publishDraft(courseId, versionId)) {
       throw new IllegalStateException("La rúbrica fue modificada mientras se publicaba");

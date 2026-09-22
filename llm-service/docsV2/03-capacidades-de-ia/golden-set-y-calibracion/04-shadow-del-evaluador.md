@@ -19,7 +19,7 @@ No confundir con el shadow de *infraestructura* (segunda instancia del servicio 
 | Pregunta | Decisión |
 |---|---|
 | **¿Dónde se activa?** | Como un **job aparte** (`shadow_run`), pedido por un docente del curso con `POST /courses/{courseId}/shadow-runs`. No es un flag en el camino de evaluación, así que no puede afectar una evaluación real (RF-IA-27). Lo ejecuta un worker del scheduler, de a una corrida. |
-| **¿Dónde va la salida descartada?** | Solo a `shadow_runs` y `shadow_case_results` (migración `V31`). **Nunca** al outbox/Kafka, a `pending_evaluations` ni a `calibration_*`: lo hace cumplir `ArchitectureTest` (el paquete `shadow` no puede depender de ellos). No se guarda la transcripción: solo la referencia a la fuente y los puntajes. Retención 30 días (`llm.shadow.retention-days`). |
+| **¿Dónde va la salida descartada?** | Solo a `shadow_runs` y `shadow_case_results` (migración `V37`). **Nunca** al outbox/Kafka, a `pending_evaluations` ni a `calibration_*`: lo hace cumplir `ArchitectureTest` (el paquete `shadow` no puede depender de ellos). No se guarda la transcripción: solo la referencia a la fuente y los puntajes. Retención 30 días (`llm.shadow.retention-days`). |
 | **¿Cómo se compara?** | Cada transcripción se evalúa con la rúbrica **baseline** (la de la calibración activa del curso) y con la **candidata**, con la misma función `EVALUATOR` y el mismo modelo, así la diferencia es atribuible a la rúbrica. Ver métricas abajo. |
 
 ## Cómo funciona (Fase 1: replay)
@@ -91,5 +91,5 @@ tablas listas: la Fase 2 solo agrega una **fuente** más (`ShadowSampleSource`) 
 ## Dónde está en el código
 
 `llm-service/src/main/java/ar/edu/utn/frc/tup/piv/llm/shadow/` (`domain`, `application`, `infrastructure`, `api`),
-migración `V31__shadow_evaluation.sql`, contrato en [`llm-service.openapi.yaml`](../../contracts/llm-service.openapi.yaml)
+migración `V37__shadow_evaluation.sql`, contrato en [`llm-service.openapi.yaml`](../../contracts/llm-service.openapi.yaml)
 (`/shadow-runs`). Tests: `shadow/**` (unitarios) y `it/ShadowPersistenceIT` (Postgres real).

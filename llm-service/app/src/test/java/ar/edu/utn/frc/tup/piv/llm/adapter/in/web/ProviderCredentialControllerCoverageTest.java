@@ -18,6 +18,7 @@ import ar.edu.utn.frc.tup.piv.llm.adapter.in.web.ProviderCredentialController.Cr
 import ar.edu.utn.frc.tup.piv.llm.adapter.in.web.ProviderCredentialController.CreateDeployment;
 import ar.edu.utn.frc.tup.piv.llm.adapter.in.web.security.GoldenSetAuthorization;
 import ar.edu.utn.frc.tup.piv.llm.adapter.out.ai.EncryptedSecretService;
+import ar.edu.utn.frc.tup.piv.llm.application.exception.ResourceNotFoundException;
 import ar.edu.utn.frc.tup.piv.llm.adapter.out.ai.EncryptedSecretService.EncryptedSecret;
 import ar.edu.utn.frc.tup.piv.llm.adapter.out.ai.ProviderInvocationGateway;
 import ar.edu.utn.frc.tup.piv.llm.adapter.out.ai.ProviderRegistry;
@@ -290,7 +291,7 @@ class ProviderCredentialControllerCoverageTest {
     when(h.repository().deployment(id)).thenReturn(Optional.empty());
 
     assertThatThrownBy(() -> h.controller().chat(id, new ChatRequest("hola"), h.headers()))
-        .isInstanceOf(IllegalStateException.class).hasMessage("El modelo no existe");
+        .isInstanceOf(ResourceNotFoundException.class).hasMessage("El modelo no existe");
   }
 
   @Test

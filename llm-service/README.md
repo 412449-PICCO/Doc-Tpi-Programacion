@@ -33,9 +33,26 @@ Gamificado**.
 
 ### Backend aislado
 
+Antes del primer arranque (una sola vez por máquina):
+
+```bash
+cp .env.example .env                                  # y completar LLM_CREDENTIALS_MASTER_KEY en .env
+openssl rand -base64 32                               # genera la clave AES-256 que pide LLM_CREDENTIALS_MASTER_KEY
+docker network create tpi-platform                    # red externa de la plataforma; no hace falta si ya existe
+```
+
+Sin `LLM_CREDENTIALS_MASTER_KEY` el `up` falla con `required variable LLM_CREDENTIALS_MASTER_KEY is missing`;
+sin la red `tpi-platform`, con `network tpi-platform declared as external, but could not be found`.
+
 ```bash
 docker compose up --build
 ```
+
+Levanta tres servicios *healthy*: `postgres`, `kafka-local` (broker local para probar sin la plataforma) y
+`llm-service`. `compose.yaml` fija `container_name: llm-service` (el nombre del servicio, igual que en Eureka): si ya existe
+un contenedor con ese nombre de otro proyecto, borrarlo (`docker rm llm-service`) o el `up` falla con
+`container name "/llm-service" is already in use`.
+El smoke `scripts/smoke-compose.sh` no tiene ese problema: usa nombres propios y clave descartable.
 
 El servicio queda disponible sólo dentro de la red Docker. Su healthcheck es
 `http://llm-service:8087/actuator/health` desde otro contenedor (la API escucha en `8086`). La composición base no expone
@@ -79,12 +96,12 @@ Variables de entorno: ver [`.env.example`](.env.example).
 ### Guía de Demo y Verificación de Reinicio (Sprint 1)
 
 Para la Sprint Review y verificación reproducible con evidencia técnica:
-- **Guía de demo paso a paso:** [`docs/guia-demo-s1.md`](docs/guia-demo-s1.md) (versión canónica V2: [`docsV2/06-operacion-calidad-y-pruebas/05-guia-demo-s1.md`](docsV2/06-operacion-calidad-y-pruebas/05-guia-demo-s1.md)).
+- **Guía de demo paso a paso:** [`docsV2/06-operacion-calidad-y-pruebas/05-guia-demo-s1.md`](docsV2/06-operacion-calidad-y-pruebas/05-guia-demo-s1.md) (verificada el 2026-09-21).
 - **Prueba automatizada de reinicio de Compose (H06·T4):**
   - Linux / macOS / Git Bash: `bash scripts/test-compose-restart.sh`
   - Windows PowerShell: `powershell -File scripts/test-compose-restart.ps1`
 - **Suite de pruebas y reporte de cobertura JaCoCo (H06·T6):**
-  - Ejecutar `mvn test` para correr las 218 pruebas unitarias y de arquitectura.
+  - Ejecutar `mvn test` para correr las pruebas unitarias y de arquitectura (675 al 2026-09-21; los tests de esquema `FlywaySchemaTest` y `V1IsolatedSchemaTest` requieren `-Dintegration=true`).
   - El reporte de cobertura se genera automáticamente en `target/site/jacoco/index.html` y `jacoco.xml`.
   - El gate de calidad en CI verifica que los paquetes de dominio superen el umbral exigido.
 

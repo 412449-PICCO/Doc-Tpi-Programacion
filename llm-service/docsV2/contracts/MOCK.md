@@ -2,7 +2,7 @@
 
 > **Historia:** `LLM-EP01-H05` (ex-H08) — Contrato OpenAPI y mock del golden set publicados (10 h).  
 > **Criterio de Aceptación CA2:** El simulador se levanta con un comando documentado y responde según el contrato.  
-> **Contrato de referencia:** [`llm-service-v2-golden-set.openapi.yaml`](llm-service-v2-golden-set.openapi.yaml).  
+> **Contrato de referencia:** [`llm-service.openapi.yaml`](llm-service.openapi.yaml).  
 > **Propósito:** Permite a `admin-service` y otros consumidores de la plataforma avanzar en su desarrollo e integración desacoplada sin depender del despliegue real del servicio.
 
 ---
@@ -17,16 +17,18 @@ Disponer de Node.js (npx se incluye por defecto) o Docker.
 ### Comando para levantar el mock (desde la raíz del repo)
 
 ```bash
-npx --yes @stoplight/prism-cli mock docs/contracts/llm-service-v2-golden-set.openapi.yaml --port 4010
+npx --yes @stoplight/prism-cli mock llm-service/docsV2/contracts/llm-service.openapi.yaml --port 4010
 ```
 
-El simulador queda disponible en:  
-`http://localhost:4010/api/llm`
+El simulador queda disponible en `http://localhost:4010`, **sin** el prefijo `/api/llm`: Prism ignora el
+`servers.url` relativo del contrato, así que `GET /api/llm/admin/rubric-templates` del servicio real es
+`GET http://localhost:4010/admin/rubric-templates` en el mock. Verificado el 2026-09-21: devuelve `200` con
+cuerpo conforme al esquema y `401` sin `Authorization` (el contrato exige `serviceJwt`).
 
 ### Alternativa con Docker (sin requerir Node local)
 
 ```bash
-docker run --rm -p 4010:4010 -v "${PWD}/docs/contracts:/tmp/contracts" stoplight/prism:4 mock /tmp/contracts/llm-service-v2-golden-set.openapi.yaml --host 0.0.0.0
+docker run --rm -p 4010:4010 -v "${PWD}/llm-service/docsV2/contracts:/tmp/contracts" stoplight/prism:4 mock /tmp/contracts/llm-service.openapi.yaml --host 0.0.0.0
 ```
 
 ---
@@ -43,7 +45,10 @@ docker compose -f compose.yaml -f compose.workbench.yaml up
 
 ### Características del modo Workbench
 - Activa `SPRING_PROFILES_ACTIVE=workbench`.
-- Habilita `WorkbenchDemoCatalog` con cursos preconfigurados (Programación III, Paradigmas de Programación).
+- Los cursos del laboratorio los sirve el `courses-mock` (MockServer, `demo/courses/expectations.json`), no el
+  backend: `llm-service` los resuelve con `GatewayCoursesMembershipClient` igual que contra courses-service real.
+  El catálogo en memoria `WorkbenchDemoCatalog` se borró en la [integración del 2026-09-21](../registro/2026-09-21-integracion-main-a-dev.md).
+- Siembra rúbrica y golden set de prueba con `WorkbenchCalibrationSeed` (perfil `workbench`, idempotente).
 - Simula la identidad del docente sin requerir el API Gateway real ni un Identity Provider M2M.
 - Levanta además `gateway-mock` (Nginx) en `localhost:8080` como único punto HTTP del laboratorio:
   enruta `/api/llm/**` al `llm-service` real y `/api/courses/**` al `courses-mock` (MockServer, que

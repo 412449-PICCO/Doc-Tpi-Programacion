@@ -110,7 +110,8 @@ controllers, contrario al flujo de doc 36 — detallado en §6.
 
 ## 3. La estructura real
 
-> Foto verificada contra `main` el 2026-09-18, tras el refactor a reactor Maven multi-módulo.
+> Foto verificada contra `integracion/main-a-dev` el 2026-09-21, tras el refactor a reactor Maven
+> multi-módulo de `main` y la [integración de `dev`](../registro/2026-09-21-integracion-main-a-dev.md).
 > Los nombres de capas de documentos históricos no deben usarse para crear carpetas nuevas.
 
 ```text
@@ -132,16 +133,31 @@ El `pom.xml` raíz es un reactor Maven con esos cinco módulos. La aplicación e
 app/src/main/
 ├── java/ar/edu/utn/frc/tup/piv/llm/
 │   ├── adapter/in/web/          controllers bajo /api/llm/**
-│   ├── adapter/in/messaging/    consumidores de eventos
 │   ├── adapter/out/ai/          adaptadores a proveedores
 │   ├── adapter/out/http/        clientes HTTP, incluido Courses
-│   ├── adapter/out/messaging/   publicación de eventos
 │   ├── adapter/out/persistence/ JDBC y repositorios
-│   ├── application/             casos de uso, puertos y workers
+│   ├── application/             casos de uso, puertos, modelos y workers
 │   ├── domain/                  reglas de negocio sin I/O
-│   └── configuration/           configuración Spring
+│   ├── configuration/           configuración Spring
+│   ├── messaging/kafka/         productor, outbox, consumidores y dedup
+│   ├── moderation/              EP-08, con sus propias capas internas
+│   └── shadow/                  shadow runs del evaluador, ídem
 └── resources/db/migration/      migraciones Flyway
 ```
+
+`moderation/` y `shadow/` son **subsistemas verticales**: traen adentro su propio
+`api/application/domain/infrastructure` y no se desarman en las capas de arriba. Código nuevo de
+moderación o de shadow va dentro de su vertical. A `shadow/` además le cuida las fronteras
+`ArchitectureTest` (no puede tocar el outbox, Kafka, `pending_evaluations` ni `calibration_*`);
+`moderation/` todavía no tiene esa regla escrita.
+
+`messaging/kafka/` es la mensajería del servicio. La integración descartó las clases
+`adapter/in|out/messaging` que traía `main` y conservó esta implementación, que además de publicar
+tiene outbox transaccional, deduplicación por `eventId` y dead-letter en tabla.
+
+Quedan 4 clases sueltas en `infrastructure/` (`agent/`, `rag/`) que la integración no reubicó:
+son la excepción, no el patrón. Ver los pendientes del
+[registro de la integración](../registro/2026-09-21-integracion-main-a-dev.md).
 
 Los tests viven en `app/src/test/java/...`. No existe un árbol ejecutable `src/main` en la raíz de
 `llm-service`; toda incorporación nueva debe respetar el módulo `app` y los `provider-*`.
@@ -160,7 +176,8 @@ backend y representa sólo la dependencia Courses.
 | JDBC o migración | `adapter/out/persistence` + `resources/db/migration` |
 | Proveedor LLM | módulo `provider-*` + `adapter/out/ai` |
 | Cliente a otro microservicio | `adapter/out/http` |
-| Kafka | `adapter/in|out/messaging` |
+| Kafka | `messaging/kafka` (productor y outbox) y `messaging/kafka/consumer` |
+| Moderación o shadow runs | dentro de su vertical: `moderation/**`, `shadow/**` |
 
 ## 5. Chequeo contra las 10 épicas — ¿alcanzan las 8 capas para todo el servicio?
 

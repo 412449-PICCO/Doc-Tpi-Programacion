@@ -5,6 +5,7 @@ import ar.edu.utn.frc.tup.piv.llm.application.service.RubricDraftService.RubricI
 import ar.edu.utn.frc.tup.piv.llm.application.service.RubricDraftService.RubricVersion;
 import ar.edu.utn.frc.tup.piv.llm.application.model.CallerIdentity;
 import ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.RubricVersionRepository;
+import ar.edu.utn.frc.tup.piv.llm.application.exception.ResourceNotFoundException;
 import ar.edu.utn.frc.tup.piv.llm.domain.CalibrationMetrics.Dimension;
 import java.math.BigDecimal;
 import java.util.List;
@@ -40,7 +41,7 @@ class RubricDraftServiceCoverageTest {
     when(repository.find(course, versionId)).thenReturn(Optional.of(version));
     assertThat(service.get(course, versionId)).isEqualTo(version);
     when(repository.find(course, versionId)).thenReturn(Optional.empty());
-    assertThatThrownBy(() -> service.get(course, versionId)).isInstanceOf(IllegalStateException.class).hasMessage("La rúbrica no existe en el curso");
+    assertThatThrownBy(() -> service.get(course, versionId)).isInstanceOf(ResourceNotFoundException.class).hasMessage("La rúbrica no existe en el curso");
   }
 
   @Test void rejectsBlankTemplateNames() {

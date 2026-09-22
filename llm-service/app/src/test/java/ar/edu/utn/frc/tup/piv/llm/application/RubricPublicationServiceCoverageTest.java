@@ -7,6 +7,7 @@ import ar.edu.utn.frc.tup.piv.llm.application.service.RubricDraftService.RubricV
 import ar.edu.utn.frc.tup.piv.llm.application.model.CallerIdentity;
 import ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.AuditRepository;
 import ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.RubricVersionRepository;
+import ar.edu.utn.frc.tup.piv.llm.application.exception.ResourceNotFoundException;
 import ar.edu.utn.frc.tup.piv.llm.domain.CalibrationMetrics.Dimension;
 import ar.edu.utn.frc.tup.piv.llm.domain.RubricValidator.DimensionDefinition;
 import java.math.BigDecimal;
@@ -37,7 +38,7 @@ class RubricPublicationServiceCoverageTest {
     UUID course = UUID.randomUUID(), version = UUID.randomUUID();
     when(rubrics.dimensionsOfDraft(course, version)).thenReturn(validDefinitions());
     when(rubrics.find(course, version)).thenReturn(Optional.empty());
-    assertThatThrownBy(() -> service.publish(course, version, actor)).isInstanceOf(IllegalStateException.class).hasMessage("La rúbrica no existe en el curso");
+    assertThatThrownBy(() -> service.publish(course, version, actor)).isInstanceOf(ResourceNotFoundException.class).hasMessage("La rúbrica no existe en el curso");
   }
 
   @Test void publishesDraftExpiringCalibrationsAndAuditing() {

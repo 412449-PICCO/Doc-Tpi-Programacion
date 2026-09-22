@@ -11,7 +11,9 @@ decisión afecte alcance, seguridad, contratos o planificación.
 2. [Decisiones y pendientes](02-decisiones-y-pendientes.md): ADR, decisiones aprobadas, dueños y
    preguntas que aún requieren acuerdo. Los ADR aceptados viven en [`adr/`](adr/):
    [ADR-001](adr/ADR-001-arquitectura-y-convenciones-llm-service.md) (arquitectura y convenciones)
-   y [ADR-002](adr/ADR-002-mensajeria-kafka-outbox-y-dedup.md) (mensajería Kafka, outbox y dedup).
+   [ADR-002](adr/ADR-002-mensajeria-kafka-outbox-y-dedup.md) (mensajería Kafka, outbox y dedup) y
+   [ADR-003](adr/ADR-003-estructura-multimodulo-y-variables-de-entorno.md) (estructura multi-módulo y
+   variables de entorno vigentes; supersede parcialmente a ADR-001).
 3. [Glosario y metadata](03-glosario-y-metadata.md): términos que distintos equipos pueden usar
    con sentidos diferentes.
 4. [Matriz de trazabilidad](04-matriz-trazabilidad.md): relación entre requisitos, contratos,

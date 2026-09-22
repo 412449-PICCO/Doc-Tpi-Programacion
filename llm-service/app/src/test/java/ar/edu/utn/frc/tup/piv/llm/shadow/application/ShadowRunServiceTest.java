@@ -1,5 +1,6 @@
 package ar.edu.utn.frc.tup.piv.llm.shadow.application;
 
+import ar.edu.utn.frc.tup.piv.llm.application.exception.ResourceNotFoundException;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -96,7 +97,7 @@ class ShadowRunServiceTest {
     when(store.rubricVersionVisibleToCourse(course, candidate)).thenReturn(false);
 
     assertThatThrownBy(() -> service.enqueue(course, command(ShadowRun.Source.TUTOR_CONVERSATIONS, null, 5, null), key, actor))
-        .isInstanceOf(IllegalStateException.class).hasMessageContaining("candidata no existe");
+        .isInstanceOf(ResourceNotFoundException.class).hasMessageContaining("candidata no existe");
     verify(store, never()).create(any());
   }
 
@@ -107,7 +108,7 @@ class ShadowRunServiceTest {
     when(store.goldenSetVersionVisibleToCourse(course, golden)).thenReturn(false);
 
     assertThatThrownBy(() -> service.enqueue(course, command(ShadowRun.Source.GOLDEN_SET, golden, 5, null), key, actor))
-        .isInstanceOf(IllegalStateException.class).hasMessageContaining("golden set");
+        .isInstanceOf(ResourceNotFoundException.class).hasMessageContaining("golden set");
   }
 
   @Test
@@ -135,6 +136,6 @@ class ShadowRunServiceTest {
     when(store.find(other, UUID.randomUUID())).thenReturn(Optional.empty());
 
     assertThatThrownBy(() -> service.get(other, UUID.randomUUID()))
-        .isInstanceOf(IllegalStateException.class).hasMessageContaining("no existe en el curso");
+        .isInstanceOf(ResourceNotFoundException.class).hasMessageContaining("no existe en el curso");
   }
 }

@@ -53,7 +53,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: tpi-llm
+    container_name: llm-service
     # Comparte el namespace de red del sidecar Tailscale:
     # SIN ports:, SIN networks:, SIN dns:, SIN extra_hosts:.
     network_mode: "service:mesh-client"

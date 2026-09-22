@@ -1,6 +1,6 @@
 # EP-08 · Moderación integrada — verificación (2026-09-18)
 
-Verificado contra el servicio real (Docker: `pgvector/pg16` + `llm-service`, overlay `compose.debug.yaml`, Flyway hasta V28), no solo con tests.
+Verificado contra el servicio real (Docker: `pgvector/pg16` + `llm-service`, overlay `compose.debug.yaml`, Flyway hasta V34 (numeración vigente; entonces V28)), no solo con tests.
 
 ## Defecto encontrado y corregido
 

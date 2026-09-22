@@ -171,7 +171,7 @@ class CalibrationFlowIT extends AbstractIntegrationIT {
     mvc.perform(asTeacher(post("/api/llm/courses/" + c + "/calibrations"), c).content("{}"))
         .andExpect(status().isBadRequest());
     mvc.perform(asTeacher(get("/api/llm/courses/" + c + "/calibrations/" + UUID.randomUUID()), c))
-        .andExpect(status().isConflict());
+        .andExpect(status().isNotFound());
   }
 
   @Autowired ar.edu.utn.frc.tup.piv.llm.application.service.CalibrationWorkflowService workflow;
