@@ -2,7 +2,7 @@ package ar.edu.utn.frc.tup.piv.llm.messaging.kafka;
 
 /**
  * Topics Kafka que usa {@code llm-service}, tal como figuran en
- * {@code docsV2/contracts/llm-service.asyncapi.yaml}. <b>Nombres PROVISORIOS:</b> los grupos no pueden
+ * {@code docs/contracts/llm-service.asyncapi.yaml}. <b>Nombres PROVISORIOS:</b> los grupos no pueden
  * crear tópicos (KAFKA_EVENT_STANDARD.md §4) y el grupo de Notificaciones todavía no asignó los
  * definitivos. Cuando lo haga, se cambian solo los valores de estas constantes. Un topic agrupa
  * varios {@code eventType}; no crear un topic nuevo por cada tipo de evento.

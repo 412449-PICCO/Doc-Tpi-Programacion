@@ -41,7 +41,7 @@ public final class OutputAntiLeakGuard {
   /**
    * Heurística de forma de código (bloques largos, snippets inline, líneas con forma de código).
    * Solo se aplica en `high`/`medium`: en `low` sobre-bloquea respuestas legítimas, según la adenda
-   * SSE y {@code docsV2/.../ep-05/interactions.md}.
+   * SSE y {@code docs/.../ep-05/interactions.md}.
    */
   public boolean looksLikeCode(String response) {
     if (response == null || response.isBlank()) return false;

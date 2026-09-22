@@ -62,12 +62,12 @@ services:
   # ---------------------------------------------------------------------------------
   # Todavía sin código que los use (sin dependencia en pom.xml, sin cliente instanciado).
   # Quedan preparados y apagados acá para no perder tiempo de config el día que hagan
-  # falta. Detalle de cada uno y qué lo activaría: docs/39-servicios-docker.md.
+  # falta. Detalle de cada uno y qué lo activaría: docs/02-arquitectura-y-plataforma/05-servicios-docker.md.
   # ---------------------------------------------------------------------------------
 
   # redis:
-  #   # Cola/caché/cuotas (docs/12 §3). Descartado a propósito para S1: "a 120 usuarios
-  #   # probablemente no haga falta Redis" (docs/06 Parte 2) — la cola interna usa
+  #   # Cola/caché/cuotas (docs/02-arquitectura-y-plataforma/05-servicios-docker.md). Descartado a
+  #   # propósito para S1: "a 120 usuarios probablemente no haga falta Redis" — la cola interna usa
   #   # Postgres SKIP LOCKED. Revisar si el volumen de trabajos crece.
   #   image: redis:7-alpine
   #   command: ["redis-server", "--appendonly", "yes"]
@@ -97,8 +97,9 @@ services:
 
   # minio:
   #   # Almacenamiento de objetos para los PDF originales — "solo si nadie más los
-  #   # tiene" (docs/12 §1). Hoy el PDF se guarda como BYTEA en rag_documents, decisión
-  #   # explícita (docs/estado-implementacion/ep-09/ingesta.md, "Qué NO se portó").
+  #   # tiene" (docs/03-capacidades-de-ia/rag-e-ingesta/01-almacenamiento-e-ingesta.md). Hoy el PDF
+  #   # se guarda como BYTEA en rag_documents, decisión explícita
+  #   # (docs/06-operacion-calidad-y-pruebas/04-estado-de-implementacion/ep-09/ingesta.md, "Qué NO se portó").
   #   image: minio/minio:latest
   #   command: server /data --console-address ":9001"
   #   environment:
@@ -107,7 +108,8 @@ services:
   #   volumes:
   #     - llm-minio-data:/data
 
-  # Eureka y API Gateway NO están acá, ni siquiera comentados: docs/25 registra que "no
+  # Eureka y API Gateway NO están acá, ni siquiera comentados:
+  # docs/06-operacion-calidad-y-pruebas/03-matriz-de-pruebas-de-infraestructura.md registra que "no
   # existe un servidor Eureka/Gateway ejecutable en este repositorio" y que esa suite se
   # prueba "junto con los módulos reales, no como simulación local" — los pone el Tema
   # 01/11. `spring-cloud-starter-netflix-eureka-client` ya está en el pom.xml del lado

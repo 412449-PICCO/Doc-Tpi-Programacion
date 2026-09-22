@@ -26,7 +26,7 @@ import org.junit.jupiter.api.Test;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 
 /**
- * Hace cumplir ADR-001/ADR-003 (docsV2/00-gobierno-y-evolucion/adr) y reglas estrictas de Clean Architecture / DDD:
+ * Hace cumplir ADR-001/ADR-003 (docs/00-gobierno-y-evolucion/adr) y reglas estrictas de Clean Architecture / DDD:
  * - domain es el núcleo: no depende de Spring, Kafka, JDBC/JPA, SDKs de modelos, infrastructure, application ni api.
  * - application no depende de la capa de presentación (api).
  * - adapter.in.web no depende directamente de adapter.out.persistence (orquestado vía application).
