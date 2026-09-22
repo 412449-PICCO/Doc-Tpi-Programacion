@@ -59,6 +59,55 @@ class RubricValidatorTest {
         .isInstanceOf(IllegalArgumentException.class).hasMessage("Each dimension weight must be between 0 and 100");
   }
 
+  @Test void validateModularRubric_shouldAcceptOneDimensionTotallingOneHundred() {
+    assertThatCode(() -> RubricValidator.validateModularRubric(List.of(custom("algoritmos", 100))))
+        .doesNotThrowAnyException();
+  }
+
+  @Test void validateModularRubric_shouldAcceptNArbitraryDimensionsTotallingOneHundred() {
+    assertThatCode(() -> RubricValidator.validateModularRubric(List.of(
+        custom("algoritmos", 35), custom("modularidad", 25), custom("pruebas", 20), custom("autonomia", 20))))
+        .doesNotThrowAnyException();
+  }
+
+  @Test void validateModularRubric_shouldRejectSumsThatAreNotExactlyOneHundred() {
+    assertThatThrownBy(() -> RubricValidator.validateModularRubric(List.of(custom("algoritmos", 99.99))))
+        .isInstanceOf(IllegalArgumentException.class).hasMessage("Rubric weights must total 100");
+    assertThatThrownBy(() -> RubricValidator.validateModularRubric(List.of(custom("a", 60), custom("b", 40.01))))
+        .isInstanceOf(IllegalArgumentException.class).hasMessage("Rubric weights must total 100");
+    assertThatThrownBy(() -> RubricValidator.validateModularRubric(List.of(custom("a", 95), custom("b", 5.01))))
+        .isInstanceOf(IllegalArgumentException.class).hasMessage("Rubric weights must total 100");
+  }
+
+  @Test void validateModularRubric_shouldRejectEmptyOrNullCollections() {
+    assertThatThrownBy(() -> RubricValidator.validateModularRubric(null))
+        .isInstanceOf(IllegalArgumentException.class).hasMessage("A modular rubric must contain at least one dimension");
+    assertThatThrownBy(() -> RubricValidator.validateModularRubric(List.of()))
+        .isInstanceOf(IllegalArgumentException.class).hasMessage("A modular rubric must contain at least one dimension");
+  }
+
+  @Test void validateModularRubric_shouldRejectDuplicateOrBlankKeys() {
+    assertThatThrownBy(() -> RubricValidator.validateModularRubric(List.of(custom("algoritmos", 50), custom("algoritmos", 50))))
+        .isInstanceOf(IllegalArgumentException.class).hasMessage("Each modular dimension must have a unique key");
+    assertThatThrownBy(() -> RubricValidator.validateModularRubric(List.of(custom(" ", 100))))
+        .isInstanceOf(IllegalArgumentException.class).hasMessage("Each modular dimension must have a unique key");
+    assertThatThrownBy(() -> RubricValidator.validateModularRubric(List.of(new RubricValidator.DimensionCustomDefinition(null, BigDecimal.valueOf(100)))))
+        .isInstanceOf(IllegalArgumentException.class).hasMessage("Each modular dimension must have a unique key");
+  }
+
+  @Test void validateModularRubric_shouldRejectWeightsOutOfRange() {
+    assertThatThrownBy(() -> RubricValidator.validateModularRubric(List.of(custom("a", 0))))
+        .isInstanceOf(IllegalArgumentException.class).hasMessage("Each dimension weight must be between 0 and 100");
+    assertThatThrownBy(() -> RubricValidator.validateModularRubric(List.of(custom("a", -5))))
+        .isInstanceOf(IllegalArgumentException.class).hasMessage("Each dimension weight must be between 0 and 100");
+    assertThatThrownBy(() -> RubricValidator.validateModularRubric(List.of(new RubricValidator.DimensionCustomDefinition("a", null))))
+        .isInstanceOf(IllegalArgumentException.class).hasMessage("Each dimension weight must be between 0 and 100");
+  }
+
+  private RubricValidator.DimensionCustomDefinition custom(String key, double weight) {
+    return new RubricValidator.DimensionCustomDefinition(key, BigDecimal.valueOf(weight));
+  }
+
   private List<RubricValidator.DimensionDefinition> validDimensions() {
     return List.of(dimension(AUTONOMY, 30), dimension(CLARITY, 25), dimension(PROGRESSION, 20), dimension(COMPLIANCE, 15), dimension(EFFICIENCY, 10));
   }
