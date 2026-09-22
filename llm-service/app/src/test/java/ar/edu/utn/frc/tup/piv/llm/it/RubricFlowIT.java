@@ -58,6 +58,79 @@ class RubricFlowIT extends AbstractIntegrationIT {
   }
 
   @Test
+  void modularRubricDraftPersistsCustomDimensionsAndPublishes() throws Exception {
+    UUID course = UUID.randomUUID();
+    String base = "/api/llm/courses/" + course + "/rubrics";
+    var created = body(mvc.perform(asTeacher(post(base), course)
+        .content("{\"templateVersionId\":\"" + SEEDED_TEMPLATE + "\",\"name\":\"Rúbrica modular\"}")).andExpect(status().isCreated()));
+    String id = created.path("id").asText();
+    long revision = created.path("revision").asLong();
+
+    ObjectNode input = json.createObjectNode();
+    input.put("name", "Rúbrica modular");
+    input.put("rubricKind", "MODULAR_CUSTOM");
+    input.put("userPrompt", "Priorizar buenas prácticas");
+    var dimensions = json.createArrayNode();
+    dimensions.add(modularDimension("algoritmos", 35));
+    dimensions.add(modularDimension("modularidad", 25));
+    dimensions.add(modularDimension("pruebas", 20));
+    dimensions.add(modularDimension("autonomia", 20));
+    input.set("customDimensions", dimensions);
+
+    var saved = body(mvc.perform(asTeacher(patch(base + "/" + id), course).header("If-Match", revision).content(input.toString()))
+        .andExpect(status().isOk()));
+    assertThat(saved.path("rubricKind").asText()).isEqualTo("MODULAR_CUSTOM");
+    assertThat(saved.path("userPrompt").asText()).isEqualTo("Priorizar buenas prácticas");
+    assertThat(saved.path("customDimensions")).hasSize(4);
+    assertThat(saved.path("dimensions")).isEmpty();
+
+    mvc.perform(asTeacher(post(base + "/" + id + "/publish"), course)).andExpect(status().isNoContent());
+  }
+
+  @Test
+  void modularRubricWithUnbalancedWeightsIsRejected() throws Exception {
+    UUID course = UUID.randomUUID();
+    String base = "/api/llm/courses/" + course + "/rubrics";
+    var created = body(mvc.perform(asTeacher(post(base), course)
+        .content("{\"templateVersionId\":\"" + SEEDED_TEMPLATE + "\",\"name\":\"Rúbrica modular\"}")).andExpect(status().isCreated()));
+    String id = created.path("id").asText();
+    long revision = created.path("revision").asLong();
+
+    ObjectNode input = json.createObjectNode();
+    input.put("name", "Rúbrica modular");
+    input.put("rubricKind", "MODULAR_CUSTOM");
+    var dimensions = json.createArrayNode();
+    dimensions.add(modularDimension("algoritmos", 60));
+    dimensions.add(modularDimension("pruebas", 30));
+    input.set("customDimensions", dimensions);
+
+    mvc.perform(asTeacher(patch(base + "/" + id), course).header("If-Match", revision).content(input.toString()))
+        .andExpect(status().isUnprocessableEntity());
+  }
+
+  private ObjectNode modularDimension(String key, int weight) {
+    ObjectNode dimension = json.createObjectNode();
+    dimension.put("key", key);
+    dimension.put("label", key);
+    dimension.put("criterion", "Criterio de " + key);
+    dimension.put("weight", weight);
+    ObjectNode anchors = json.createObjectNode();
+    anchors.set("low", anchor("Conducta baja", 25, "Ejemplo bajo"));
+    anchors.set("medium", anchor("Conducta media", 60, "Ejemplo medio"));
+    anchors.set("high", anchor("Conducta alta", 90, "Ejemplo alto"));
+    dimension.set("anchors", anchors);
+    return dimension;
+  }
+
+  private ObjectNode anchor(String behavior, int referenceScore, String example) {
+    ObjectNode anchor = json.createObjectNode();
+    anchor.put("behavior", behavior);
+    anchor.put("referenceScore", referenceScore);
+    anchor.put("example", example);
+    return anchor;
+  }
+
+  @Test
   void invalidRubricInputIsRejected() throws Exception {
     UUID course = UUID.randomUUID();
     mvc.perform(asTeacher(post("/api/llm/courses/" + course + "/rubrics"), course).content("{\"name\":\"\"}"))

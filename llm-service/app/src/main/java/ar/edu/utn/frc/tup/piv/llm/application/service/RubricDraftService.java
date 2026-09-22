@@ -3,6 +3,7 @@ package ar.edu.utn.frc.tup.piv.llm.application.service;
 import ar.edu.utn.frc.tup.piv.llm.application.exception.ResourceNotFoundException;
 
 import ar.edu.utn.frc.tup.piv.llm.domain.CalibrationMetrics.Dimension;
+import ar.edu.utn.frc.tup.piv.llm.domain.RubricValidator;
 import ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.RubricVersionRepository;
 import ar.edu.utn.frc.tup.piv.llm.application.model.CallerIdentity;
 import java.math.BigDecimal;
@@ -14,6 +15,9 @@ import org.springframework.transaction.annotation.Transactional;
 /** Durable rubric drafts. Every autosave uses the version revision as an optimistic lock. */
 @Service
 public class RubricDraftService {
+  public static final String DEFAULT_KIND = "DEFAULT_INSTITUTIONAL";
+  public static final String MODULAR_KIND = "MODULAR_CUSTOM";
+
   private final RubricVersionRepository rubrics;
 
   public RubricDraftService(RubricVersionRepository rubrics) { this.rubrics = rubrics; }
@@ -40,13 +44,28 @@ public class RubricDraftService {
 
   @Transactional
   public RubricVersion autosave(UUID courseId, UUID versionId, long expectedRevision, RubricInput input, CallerIdentity actor) {
-    validate(input);
+    boolean modular = isModular(input);
+    if (modular) validateModular(input); else validate(input);
     if (!rubrics.advanceRevision(courseId, versionId, expectedRevision)) {
       throw new OptimisticLockException("El borrador fue actualizado en otro dispositivo; recargá antes de guardar");
     }
     rubrics.updateVersionName(courseId, versionId, input.name().trim());
-    rubrics.replaceDimensions(versionId, input.dimensions());
+    if (modular) {
+      rubrics.updateRubricKindAndPrompt(courseId, versionId, MODULAR_KIND,
+          input.userPrompt() == null ? "" : input.userPrompt().trim());
+      rubrics.replaceCustomDimensions(versionId, input.customDimensions());
+    } else {
+      rubrics.replaceDimensions(versionId, input.dimensions());
+    }
     return get(courseId, versionId);
+  }
+
+  public static boolean isModular(RubricInput input) {
+    return input != null && MODULAR_KIND.equals(input.rubricKind());
+  }
+
+  public static boolean isModular(RubricVersion version) {
+    return version != null && MODULAR_KIND.equals(version.rubricKind());
   }
 
   private void validate(RubricInput input) {
@@ -56,11 +75,36 @@ public class RubricDraftService {
     }
   }
 
-  public record RubricInput(String name, List<DimensionInput> dimensions) {}
+  private void validateModular(RubricInput input) {
+    if (input.name() == null || input.name().isBlank() || input.customDimensions() == null || input.customDimensions().isEmpty()) {
+      throw new IllegalArgumentException("La rúbrica modular debe incluir nombre y al menos una dimensión");
+    }
+    for (DimensionCustomInput dimension : input.customDimensions()) {
+      if (dimension == null || dimension.key() == null || dimension.key().isBlank()
+          || dimension.label() == null || dimension.label().isBlank()
+          || dimension.criterion() == null || dimension.criterion().isBlank()) {
+        throw new IllegalArgumentException("Cada dimensión modular debe incluir clave, título y criterio");
+      }
+    }
+    RubricValidator.validateModularRubric(input.customDimensions().stream()
+        .map(dimension -> new RubricValidator.DimensionCustomDefinition(dimension.key().trim(), dimension.weight())).toList());
+  }
+
+  public record RubricInput(String name, String userPrompt, String rubricKind,
+      List<DimensionInput> dimensions, List<DimensionCustomInput> customDimensions) {
+    public RubricInput(String name, List<DimensionInput> dimensions) { this(name, null, null, dimensions, null); }
+  }
   public record Anchor(String behavior, Integer referenceScore, String example) {}
   public record Anchors(Anchor low, Anchor medium, Anchor high) {}
   public record DimensionInput(Dimension key, String label, String criterion, Anchors anchors, BigDecimal weight) {}
+  public record DimensionCustomInput(String key, String label, String criterion, Anchors anchors, BigDecimal weight) {}
   public record RubricVersion(UUID id, UUID familyId, int version, String name, String state, long revision,
-      UUID templateOriginVersionId, List<DimensionInput> dimensions) {}
+      UUID templateOriginVersionId, String rubricKind, String userPrompt,
+      List<DimensionInput> dimensions, List<DimensionCustomInput> customDimensions) {
+    public RubricVersion(UUID id, UUID familyId, int version, String name, String state, long revision,
+        UUID templateOriginVersionId, List<DimensionInput> dimensions) {
+      this(id, familyId, version, name, state, revision, templateOriginVersionId, DEFAULT_KIND, "", dimensions, List.of());
+    }
+  }
   public static class OptimisticLockException extends RuntimeException { public OptimisticLockException(String message) { super(message); } }
 }

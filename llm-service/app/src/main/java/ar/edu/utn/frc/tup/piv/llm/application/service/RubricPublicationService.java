@@ -26,14 +26,37 @@ public class RubricPublicationService {
   /** Publishes only a complete valid draft. Published versions are immutable in the database. */
   @Transactional
   public void publish(UUID courseId, UUID versionId, CallerIdentity actor) {
+    var version = rubrics.find(courseId, versionId)
+        .orElseThrow(() -> new ResourceNotFoundException("La rúbrica no existe en el curso"));
+    if (RubricDraftService.isModular(version)) {
+      publishModular(courseId, versionId, version, actor);
+    } else {
+      publishDefault(courseId, versionId, version, actor);
+    }
+  }
+
+  private void publishDefault(UUID courseId, UUID versionId, RubricDraftService.RubricVersion version, CallerIdentity actor) {
     var dimensions = rubrics.dimensionsOfDraft(courseId, versionId);
     if (dimensions.isEmpty()) {
       throw new IllegalStateException("La rúbrica no existe en el curso o ya no es un borrador");
     }
     RubricValidator.validateForPublication(dimensions);
-    var version = rubrics.find(courseId, versionId)
-        .orElseThrow(() -> new ResourceNotFoundException("La rúbrica no existe en el curso"));
     validateAnchors(version.dimensions());
+    commit(courseId, versionId, version, actor);
+  }
+
+  private void publishModular(UUID courseId, UUID versionId, RubricDraftService.RubricVersion version, CallerIdentity actor) {
+    var dimensions = rubrics.customDimensionsOfDraft(courseId, versionId);
+    if (dimensions.isEmpty()) {
+      throw new IllegalStateException("La rúbrica no existe en el curso o ya no es un borrador");
+    }
+    RubricValidator.validateModularRubric(dimensions.stream()
+        .map(dimension -> new RubricValidator.DimensionCustomDefinition(dimension.key(), dimension.weight())).toList());
+    validateCustomAnchors(dimensions);
+    commit(courseId, versionId, version, actor);
+  }
+
+  private void commit(UUID courseId, UUID versionId, RubricDraftService.RubricVersion version, CallerIdentity actor) {
     if (!rubrics.publishDraft(courseId, versionId)) {
       throw new IllegalStateException("La rúbrica fue modificada mientras se publicaba");
     }
@@ -43,15 +66,20 @@ public class RubricPublicationService {
   }
 
   static void validateAnchors(List<RubricDraftService.DimensionInput> dimensions) {
-    for (var dimension : dimensions) {
-      var anchors = dimension.anchors();
-      if (anchors == null || !valid(anchors.low()) || !valid(anchors.medium()) || !valid(anchors.high())) {
-        throw new IllegalArgumentException("Cada dimensión debe definir anclas baja, media y alta completas");
-      }
-      if (!(anchors.low().referenceScore() < anchors.medium().referenceScore()
-          && anchors.medium().referenceScore() < anchors.high().referenceScore())) {
-        throw new IllegalArgumentException("Los puntajes de ancla deben ser crecientes: bajo, medio y alto");
-      }
+    for (var dimension : dimensions) validateAnchor(dimension.anchors());
+  }
+
+  static void validateCustomAnchors(List<RubricDraftService.DimensionCustomInput> dimensions) {
+    for (var dimension : dimensions) validateAnchor(dimension.anchors());
+  }
+
+  private static void validateAnchor(RubricDraftService.Anchors anchors) {
+    if (anchors == null || !valid(anchors.low()) || !valid(anchors.medium()) || !valid(anchors.high())) {
+      throw new IllegalArgumentException("Cada dimensión debe definir anclas baja, media y alta completas");
+    }
+    if (!(anchors.low().referenceScore() < anchors.medium().referenceScore()
+        && anchors.medium().referenceScore() < anchors.high().referenceScore())) {
+      throw new IllegalArgumentException("Los puntajes de ancla deben ser crecientes: bajo, medio y alto");
     }
   }
 

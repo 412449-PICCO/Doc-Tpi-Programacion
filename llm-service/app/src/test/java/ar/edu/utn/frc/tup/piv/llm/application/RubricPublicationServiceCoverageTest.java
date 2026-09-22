@@ -2,6 +2,7 @@ package ar.edu.utn.frc.tup.piv.llm.application.service;
 
 import ar.edu.utn.frc.tup.piv.llm.application.service.RubricDraftService.Anchor;
 import ar.edu.utn.frc.tup.piv.llm.application.service.RubricDraftService.Anchors;
+import ar.edu.utn.frc.tup.piv.llm.application.service.RubricDraftService.DimensionCustomInput;
 import ar.edu.utn.frc.tup.piv.llm.application.service.RubricDraftService.DimensionInput;
 import ar.edu.utn.frc.tup.piv.llm.application.service.RubricDraftService.RubricVersion;
 import ar.edu.utn.frc.tup.piv.llm.application.model.CallerIdentity;
@@ -26,7 +27,8 @@ class RubricPublicationServiceCoverageTest {
   @Test void refusesPublishWithoutDimensions() {
     var rubrics = mock(RubricVersionRepository.class);
     var service = new RubricPublicationService(rubrics, mock(AuditRepository.class), mock(CalibrationExpirationService.class));
-    UUID course = UUID.randomUUID(), version = UUID.randomUUID();
+    UUID course = UUID.randomUUID(), version = UUID.randomUUID(), family = UUID.randomUUID();
+    when(rubrics.find(course, version)).thenReturn(Optional.of(versionWith(family, version)));
     when(rubrics.dimensionsOfDraft(course, version)).thenReturn(List.of());
     assertThatThrownBy(() -> service.publish(course, version, actor))
         .isInstanceOf(IllegalStateException.class).hasMessage("La rúbrica no existe en el curso o ya no es un borrador");
@@ -120,6 +122,67 @@ class RubricPublicationServiceCoverageTest {
 
   @Test void acceptsCompleteIncreasingAnchors() {
     assertThatCode(() -> RubricPublicationService.validateAnchors(List.of(dimensionWith(anchs(low(), med(), high()))))).doesNotThrowAnyException();
+  }
+
+  @Test void refusesModularPublishWithoutCustomDimensions() {
+    var rubrics = mock(RubricVersionRepository.class);
+    var service = new RubricPublicationService(rubrics, mock(AuditRepository.class), mock(CalibrationExpirationService.class));
+    UUID course = UUID.randomUUID(), version = UUID.randomUUID(), family = UUID.randomUUID();
+    when(rubrics.find(course, version)).thenReturn(Optional.of(modularVersion(family, version)));
+    when(rubrics.customDimensionsOfDraft(course, version)).thenReturn(List.of());
+    assertThatThrownBy(() -> service.publish(course, version, actor))
+        .isInstanceOf(IllegalStateException.class).hasMessage("La rúbrica no existe en el curso o ya no es un borrador");
+  }
+
+  @Test void refusesModularPublishWhenWeightsDoNotTotalOneHundred() {
+    var rubrics = mock(RubricVersionRepository.class);
+    var service = new RubricPublicationService(rubrics, mock(AuditRepository.class), mock(CalibrationExpirationService.class));
+    UUID course = UUID.randomUUID(), version = UUID.randomUUID(), family = UUID.randomUUID();
+    when(rubrics.find(course, version)).thenReturn(Optional.of(modularVersion(family, version)));
+    when(rubrics.customDimensionsOfDraft(course, version)).thenReturn(List.of(
+        customDimension("algoritmos", 60), customDimension("pruebas", 30)));
+    assertThatThrownBy(() -> service.publish(course, version, actor))
+        .isInstanceOf(IllegalArgumentException.class).hasMessage("Rubric weights must total 100");
+  }
+
+  @Test void publishesModularDraftValidatingCustomAnchorsAndAuditing() {
+    var rubrics = mock(RubricVersionRepository.class);
+    var audit = mock(AuditRepository.class);
+    var expirations = mock(CalibrationExpirationService.class);
+    var service = new RubricPublicationService(rubrics, audit, expirations);
+    UUID course = UUID.randomUUID(), version = UUID.randomUUID(), family = UUID.randomUUID();
+    when(rubrics.find(course, version)).thenReturn(Optional.of(modularVersion(family, version)));
+    when(rubrics.customDimensionsOfDraft(course, version)).thenReturn(List.of(
+        customDimension("algoritmos", 60), customDimension("pruebas", 40)));
+    when(rubrics.publishDraft(course, version)).thenReturn(true);
+    service.publish(course, version, actor);
+    org.mockito.Mockito.verify(expirations).expireByRubric(family);
+    org.mockito.Mockito.verify(audit).record(org.mockito.ArgumentMatchers.eq("rubric.published"),
+        org.mockito.ArgumentMatchers.eq("rubric-version"), org.mockito.ArgumentMatchers.eq(version),
+        org.mockito.ArgumentMatchers.eq(actor), org.mockito.ArgumentMatchers.any());
+  }
+
+  @Test void rejectsModularPublishWhenAnchorsAreIncomplete() {
+    assertThatThrownBy(() -> RubricPublicationService.validateCustomAnchors(List.of(customDimensionWith(null))))
+        .isInstanceOf(IllegalArgumentException.class).hasMessage("Cada dimensión debe definir anclas baja, media y alta completas");
+  }
+
+  private RubricVersion modularVersion(UUID family, UUID id) {
+    return new RubricVersion(id, family, 1, "Rúbrica modular", "DRAFT", 1, null,
+        RubricDraftService.MODULAR_KIND, "Priorizar buenas prácticas", List.of(),
+        List.of(customDimension("algoritmos", 100)));
+  }
+
+  private DimensionCustomInput customDimension(String key, int weight) {
+    return customDimensionWith(key, anchs(low(), med(), high()), weight);
+  }
+
+  private DimensionCustomInput customDimensionWith(Anchors anchors) {
+    return customDimensionWith("algoritmos", anchors, 100);
+  }
+
+  private DimensionCustomInput customDimensionWith(String key, Anchors anchors, int weight) {
+    return new DimensionCustomInput(key, key, "criterio", anchors, BigDecimal.valueOf(weight));
   }
 
   private Anchors anchs(Anchor low, Anchor medium, Anchor high) { return new Anchors(low, medium, high); }
