@@ -5,6 +5,11 @@
 ALTER TABLE llm.rubric_families
   ADD COLUMN IF NOT EXISTS challenge_id UUID;
 
+-- El constraint original (V2) solo admite PLATFORM/COURSE y bloquea CHALLENGE:
+-- se reemplaza por rubric_families_scope_consistency (que cubre los tres).
+ALTER TABLE llm.rubric_families
+  DROP CONSTRAINT IF EXISTS rubric_families_check;
+
 -- Reemplazar el CHECK de scope por uno que admita CHALLENGE
 ALTER TABLE llm.rubric_families
   DROP CONSTRAINT IF EXISTS rubric_families_scope_check,
