@@ -57,20 +57,43 @@ class PlatformCalibrationIT extends AbstractIntegrationIT {
     models.selectForCalibration(dep.id());
   }
 
+  private static final String PLATFORM_TRANSCRIPT =
+      "[{\"role\":\"STUDENT\",\"content\":\"¿Cómo calculo la complejidad de una búsqueda binaria?\"}]";
+  private static final String PLATFORM_CONTEXT =
+      "{\"statement\":\"Explicar complejidad logarítmica\",\"expectedKeyPoints\":[\"mitad\",\"O(log n)\"]}";
+  private static final String PLATFORM_SCORES =
+      "{\"AUTONOMY\":85,\"CLARITY\":90,\"PROGRESSION\":88,\"COMPLIANCE\":92,\"EFFICIENCY\":85}";
+
+  /** Golden set PLATFORM publicado con casos, como lo dejaría el template admin que no llegó a existir. */
+  private UUID seedPlatformGoldenSet() {
+    UUID family = UUID.randomUUID();
+    UUID version = UUID.randomUUID();
+    jdbc.update("""
+        insert into llm.golden_set_families (id, scope, course_id, name, created_by_user_id)
+        values (?, 'PLATFORM', null, 'Golden set institucional de prueba', ?)""", family, TEACHER);
+    jdbc.update("""
+        insert into llm.golden_set_versions (id, family_id, version_no, state, revision, created_by_user_id, published_at)
+        values (?, ?, 1, 'PUBLISHED', 1, ?, now())""", version, family, TEACHER);
+    for (int i = 0; i < 3; i++) {
+      jdbc.update("""
+          insert into llm.golden_set_cases (id, golden_set_version_id, case_order, review_state, transcript, challenge_context, author, reference_scores)
+          values (?, ?, ?, 'REVIEWED', cast(? as jsonb), cast(? as jsonb), 'Docente', cast(? as jsonb))""",
+          UUID.randomUUID(), version, i, PLATFORM_TRANSCRIPT, PLATFORM_CONTEXT, PLATFORM_SCORES);
+    }
+    return version;
+  }
+
   @Test
   void platformCalibrationActivatesTarget() throws Exception {
     provider(200, PERFECT);
     
     // Seed platform rubric and golden set
     UUID rid = UUID.fromString("10000000-0000-0000-0000-000000000002"); // already seeded globally by migrations
-    
-    // publish a golden set PLATFORM
-    String pbase = "/api/llm/admin/templates/golden-sets";
-    String gid = body(mvc.perform(asAdmin(post(pbase)).content("{\"name\":\"Platform G\"}")).andExpect(status().isCreated())).path("id").asText();
-    for (int i = 0; i < 3; i++) {
-      mvc.perform(asAdmin(post(pbase + "/" + gid + "/cases")).content(GoldenSetFlowIT.CASE)).andExpect(status().isCreated());
-    }
-    mvc.perform(asAdmin(post(pbase + "/" + gid + "/publish"))).andExpect(status().isNoContent());
+
+    // No existe endpoint admin de templates de golden sets (nunca se implementó junto con el
+    // controller institucional): la evidencia PLATFORM publicada se siembra directo, igual que la
+    // suite siembra otros estados globales (assignments de calibración, profiles, deployments).
+    UUID gid = seedPlatformGoldenSet();
 
     mvc.perform(asAdmin(post("/api/llm/admin/institutional-calibration/profile"))
         .content("{\"rubricVersionId\":\"" + rid + "\",\"goldenSetVersionId\":\"" + gid + "\"}"))
@@ -88,7 +111,12 @@ class PlatformCalibrationIT extends AbstractIntegrationIT {
     assertThat(detail.path("dimensionErrors").isEmpty()).isFalse();
 
     var runsList = body(mvc.perform(asAdmin(get("/api/llm/admin/institutional-calibration/runs"))).andExpect(status().isOk()));
-    assertThat(runsList.path("items").size()).isEqualTo(1);
+    // La lista institucional es global y CalibrationPersistenceIT deja su propia corrida PLATFORM en
+    // la BD compartida: se verifica que la corrida recién creada esté en el listado y sea la más
+    // reciente (order by created_at desc), sin asumir un inventario exacto de una.
+    var platformIds = java.util.stream.StreamSupport.stream(runsList.path("items").spliterator(), false)
+        .map(n -> n.path("id").asText()).toList();
+    assertThat(platformIds).first().isEqualTo(runId);
     
     var activeOpt = models.deployments().stream().filter(d -> "ACTIVE".equals(d.state())).findFirst();
     assertThat(activeOpt).isPresent();
