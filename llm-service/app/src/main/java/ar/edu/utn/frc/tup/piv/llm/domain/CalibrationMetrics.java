@@ -69,5 +69,35 @@ public final class CalibrationMetrics {
     }
   }
 
+  public static Result assessDynamic(List<Map<String, Integer>> humanScoresList, List<Map<String, Integer>> modelScoresList, Map<String, Integer> weights) {
+    if (modelScoresList == null || modelScoresList.isEmpty()) throw new IllegalArgumentException("A calibration needs at least one case");
+    BigDecimal accumulatedFinalError = BigDecimal.ZERO;
+    int maxIndividualError = 0;
+    int size = modelScoresList.size();
+
+    for (int i = 0; i < size; i++) {
+      Map<String, Integer> human = humanScoresList != null && i < humanScoresList.size() ? humanScoresList.get(i) : Map.of();
+      Map<String, Integer> model = modelScoresList.get(i);
+      BigDecimal humanFinal = BigDecimal.ZERO;
+      BigDecimal modelFinal = BigDecimal.ZERO;
+      if (weights != null) {
+        for (var entry : weights.entrySet()) {
+          String dim = entry.getKey();
+          int h = human.getOrDefault(dim, 0);
+          int m = model.getOrDefault(dim, 0);
+          int error = Math.abs(m - h);
+          maxIndividualError = Math.max(maxIndividualError, error);
+          BigDecimal factor = BigDecimal.valueOf(entry.getValue()).divide(ONE_HUNDRED);
+          humanFinal = humanFinal.add(BigDecimal.valueOf(h).multiply(factor));
+          modelFinal = modelFinal.add(BigDecimal.valueOf(m).multiply(factor));
+        }
+      }
+      accumulatedFinalError = accumulatedFinalError.add(humanFinal.subtract(modelFinal).abs());
+    }
+
+    BigDecimal maeFinal = accumulatedFinalError.divide(BigDecimal.valueOf(size), 4, RoundingMode.HALF_UP);
+    return new Result(maeFinal, maxIndividualError, maeFinal.compareTo(MAX_MAE) <= 0 && maxIndividualError <= MAX_INDIVIDUAL_ERROR);
+  }
+
   public record Result(BigDecimal maeFinal, int maxIndividualError, boolean passed) {}
 }

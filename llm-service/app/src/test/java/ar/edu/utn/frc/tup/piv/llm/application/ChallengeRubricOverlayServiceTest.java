@@ -10,6 +10,7 @@ import ar.edu.utn.frc.tup.piv.llm.application.service.RubricDraftService.Dimensi
 import ar.edu.utn.frc.tup.piv.llm.application.service.RubricDraftService.RubricVersion;
 import ar.edu.utn.frc.tup.piv.llm.application.service.RubricDraftService;
 import ar.edu.utn.frc.tup.piv.llm.application.exception.ResourceNotFoundException;
+import ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.ChallengeCalibrationAssignmentRepository;
 import ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.RubricVersionRepository;
 import java.math.BigDecimal;
 import java.util.List;
@@ -20,6 +21,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -28,11 +30,13 @@ import static org.mockito.Mockito.when;
 class ChallengeRubricOverlayServiceTest {
   private final CallerIdentity actor = new CallerIdentity("gateway", UUID.randomUUID(), null, null);
   private final RubricVersionRepository rubrics = mock(RubricVersionRepository.class);
+  private final ChallengeCalibrationAssignmentRepository assignments = mock(ChallengeCalibrationAssignmentRepository.class);
   private final EffectiveRubricResolver resolver = mock(EffectiveRubricResolver.class);
-  private final ChallengeRubricOverlayService service = new ChallengeRubricOverlayService(rubrics, resolver);
+  private final ChallengeRubricOverlayService service = new ChallengeRubricOverlayService(rubrics, assignments, resolver);
 
   @Test void createDraftRequiresAPublishedBaseline() {
     UUID course = UUID.randomUUID(), challenge = UUID.randomUUID(), baseline = UUID.randomUUID();
+    when(assignments.belongsToCourse(challenge, course)).thenReturn(true);
     when(rubrics.find(course, baseline)).thenReturn(Optional.empty());
     assertThatThrownBy(() -> service.createDraft(course, challenge, "Overlay", baseline, actor))
         .isInstanceOf(IllegalArgumentException.class).hasMessage("La rúbrica base del curso no existe");
@@ -40,13 +44,37 @@ class ChallengeRubricOverlayServiceTest {
 
   @Test void createDraftRejectsUnpublishedBaseline() {
     UUID course = UUID.randomUUID(), challenge = UUID.randomUUID(), baseline = UUID.randomUUID();
+    when(assignments.belongsToCourse(challenge, course)).thenReturn(true);
     when(rubrics.find(course, baseline)).thenReturn(Optional.of(version("Rúbrica", "DRAFT", baseline)));
     assertThatThrownBy(() -> service.createDraft(course, challenge, "Overlay", baseline, actor))
         .isInstanceOf(IllegalArgumentException.class).hasMessage("La rúbrica base debe estar publicada");
   }
 
+  @Test void createDraftRejectsChallengeNotInCourse() {
+    UUID course = UUID.randomUUID(), challenge = UUID.randomUUID(), baseline = UUID.randomUUID();
+    when(assignments.belongsToCourse(challenge, course)).thenReturn(false);
+    assertThatThrownBy(() -> service.createDraft(course, challenge, "Overlay", baseline, actor))
+        .isInstanceOf(ResourceNotFoundException.class).hasMessage("El desafío no pertenece a este curso");
+    verify(rubrics, never()).find(any(), any());
+  }
+
+  @Test void listByChallengeRejectsChallengeNotInCourse() {
+    UUID course = UUID.randomUUID(), challenge = UUID.randomUUID();
+    when(assignments.belongsToCourse(challenge, course)).thenReturn(false);
+    assertThatThrownBy(() -> service.listByChallenge(course, challenge))
+        .isInstanceOf(ResourceNotFoundException.class).hasMessage("El desafío no pertenece a este curso");
+  }
+
+  @Test void getRejectsChallengeNotInCourse() {
+    UUID course = UUID.randomUUID(), challenge = UUID.randomUUID(), overlay = UUID.randomUUID();
+    when(assignments.belongsToCourse(challenge, course)).thenReturn(false);
+    assertThatThrownBy(() -> service.get(course, challenge, overlay))
+        .isInstanceOf(ResourceNotFoundException.class).hasMessage("El desafío no pertenece a este curso");
+  }
+
   @Test void autosaveRejectsCustomDimensionsNotTotallingOneHundred() {
     UUID course = UUID.randomUUID(), challenge = UUID.randomUUID(), overlay = UUID.randomUUID();
+    when(assignments.belongsToCourse(challenge, course)).thenReturn(true);
     var input = new ChallengeRubricOverlayService.OverlayInput("Overlay", "Guía",
         List.of(custom("algoritmos", 60)));
     assertThatThrownBy(() -> service.autosave(course, challenge, overlay, 1, input, actor))
@@ -56,6 +84,7 @@ class ChallengeRubricOverlayServiceTest {
 
   @Test void autosavePersistsCustomDimensionsAndPrompt() {
     UUID course = UUID.randomUUID(), challenge = UUID.randomUUID(), overlay = UUID.randomUUID();
+    when(assignments.belongsToCourse(challenge, course)).thenReturn(true);
     var dims = List.of(custom("algoritmos", 60), custom("pruebas", 40));
     var input = new ChallengeRubricOverlayService.OverlayInput("Overlay", "Guía", dims);
     when(rubrics.advanceChallengeRevision(course, challenge, overlay, 2)).thenReturn(true);
@@ -76,6 +105,7 @@ class ChallengeRubricOverlayServiceTest {
 
   @Test void publishRejectsEmptyCustomDimensions() {
     UUID course = UUID.randomUUID(), challenge = UUID.randomUUID(), overlay = UUID.randomUUID();
+    when(assignments.belongsToCourse(challenge, course)).thenReturn(true);
     when(rubrics.findChallenge(course, challenge, overlay)).thenReturn(Optional.of(versionWithId(overlay, "Overlay", "DRAFT", overlay)));
     when(rubrics.challengeCustomDimensions(overlay)).thenReturn(List.of());
     when(rubrics.rubricKindOf(overlay)).thenReturn("MODULAR_CUSTOM");
@@ -87,6 +117,7 @@ class ChallengeRubricOverlayServiceTest {
 
   @Test void publishRejectsWeightsNotTotallingOneHundred() {
     UUID course = UUID.randomUUID(), challenge = UUID.randomUUID(), overlay = UUID.randomUUID();
+    when(assignments.belongsToCourse(challenge, course)).thenReturn(true);
     when(rubrics.findChallenge(course, challenge, overlay)).thenReturn(Optional.of(versionWithId(overlay, "Overlay", "DRAFT", overlay)));
     when(rubrics.challengeCustomDimensions(overlay)).thenReturn(List.of(custom("algoritmos", 60)));
     when(rubrics.rubricKindOf(overlay)).thenReturn("MODULAR_CUSTOM");
@@ -98,6 +129,7 @@ class ChallengeRubricOverlayServiceTest {
 
   @Test void getRejectsMissingOverlay() {
     UUID course = UUID.randomUUID(), challenge = UUID.randomUUID(), overlay = UUID.randomUUID();
+    when(assignments.belongsToCourse(challenge, course)).thenReturn(true);
     when(rubrics.findChallenge(course, challenge, overlay)).thenReturn(Optional.empty());
     assertThatThrownBy(() -> service.get(course, challenge, overlay))
         .isInstanceOf(ResourceNotFoundException.class).hasMessage("El overlay no existe para este desafío");
@@ -105,6 +137,7 @@ class ChallengeRubricOverlayServiceTest {
 
   @Test void listByChallengeReturnsOverlayVersions() {
     UUID course = UUID.randomUUID(), challenge = UUID.randomUUID();
+    when(assignments.belongsToCourse(challenge, course)).thenReturn(true);
     var v = version("Overlay", "DRAFT", UUID.randomUUID());
     when(rubrics.listByChallenge(course, challenge)).thenReturn(List.of(v));
     when(rubrics.challengeCustomDimensions(v.id())).thenReturn(List.of());
@@ -119,6 +152,7 @@ class ChallengeRubricOverlayServiceTest {
 
   @Test void createDraftCreatesOverlayWhenBaselineIsPublished() {
     UUID course = UUID.randomUUID(), challenge = UUID.randomUUID(), baseline = UUID.randomUUID();
+    when(assignments.belongsToCourse(challenge, course)).thenReturn(true);
     var created = version("Overlay", "DRAFT", baseline);
     when(rubrics.find(course, baseline)).thenReturn(Optional.of(version("Rúbrica", "PUBLISHED", baseline)));
     when(rubrics.createDraftForChallenge(course, challenge, "Overlay", baseline, actor.delegatedUserId()))
@@ -135,6 +169,7 @@ class ChallengeRubricOverlayServiceTest {
 
   @Test void createDraftRejectsMissingTemplateDraft() {
     UUID course = UUID.randomUUID(), challenge = UUID.randomUUID(), baseline = UUID.randomUUID();
+    when(assignments.belongsToCourse(challenge, course)).thenReturn(true);
     when(rubrics.find(course, baseline)).thenReturn(Optional.of(version("Rúbrica", "PUBLISHED", baseline)));
     when(rubrics.createDraftForChallenge(course, challenge, "Overlay", baseline, actor.delegatedUserId()))
         .thenReturn(Optional.empty());
@@ -144,6 +179,7 @@ class ChallengeRubricOverlayServiceTest {
 
   @Test void createNextVersionReturnsTheNewDraft() {
     UUID course = UUID.randomUUID(), challenge = UUID.randomUUID(), published = UUID.randomUUID();
+    when(assignments.belongsToCourse(challenge, course)).thenReturn(true);
     var next = version("Overlay v2", "DRAFT", UUID.randomUUID());
     when(rubrics.createNextChallengeDraft(course, challenge, published, actor.delegatedUserId()))
         .thenReturn(Optional.of(next));
@@ -159,6 +195,7 @@ class ChallengeRubricOverlayServiceTest {
 
   @Test void createNextVersionRejectsUnpublishedSource() {
     UUID course = UUID.randomUUID(), challenge = UUID.randomUUID(), published = UUID.randomUUID();
+    when(assignments.belongsToCourse(challenge, course)).thenReturn(true);
     when(rubrics.createNextChallengeDraft(course, challenge, published, actor.delegatedUserId()))
         .thenReturn(Optional.empty());
     assertThatThrownBy(() -> service.createNextVersion(course, challenge, published, actor))
@@ -167,6 +204,7 @@ class ChallengeRubricOverlayServiceTest {
 
   @Test void getEffectiveProfileResolvesTheOverlay() {
     UUID course = UUID.randomUUID(), challenge = UUID.randomUUID(), overlay = UUID.randomUUID(), baseline = UUID.randomUUID();
+    when(assignments.belongsToCourse(challenge, course)).thenReturn(true);
     var dim = new EffectiveRubricResolver.EffectiveDimension("a", "A", "c", null, BigDecimal.valueOf(100),
         EffectiveRubricResolver.EffectiveDimension.Origin.OVERLAY);
     when(rubrics.findChallenge(course, challenge, overlay)).thenReturn(Optional.of(versionWithId(overlay, "Overlay", "PUBLISHED", baseline)));
@@ -184,6 +222,7 @@ class ChallengeRubricOverlayServiceTest {
 
   @Test void publishPublishesWhenWeightsTotalOneHundred() {
     UUID course = UUID.randomUUID(), challenge = UUID.randomUUID(), overlay = UUID.randomUUID();
+    when(assignments.belongsToCourse(challenge, course)).thenReturn(true);
     when(rubrics.findChallenge(course, challenge, overlay)).thenReturn(Optional.of(versionWithId(overlay, "Overlay", "DRAFT", UUID.randomUUID())));
     when(rubrics.challengeCustomDimensions(overlay)).thenReturn(List.of(custom("a", 60), custom("b", 40)));
     when(rubrics.rubricKindOf(overlay)).thenReturn("MODULAR_CUSTOM");
@@ -198,6 +237,7 @@ class ChallengeRubricOverlayServiceTest {
 
   @Test void publishRejectsConcurrentModification() {
     UUID course = UUID.randomUUID(), challenge = UUID.randomUUID(), overlay = UUID.randomUUID();
+    when(assignments.belongsToCourse(challenge, course)).thenReturn(true);
     when(rubrics.findChallenge(course, challenge, overlay)).thenReturn(Optional.of(versionWithId(overlay, "Overlay", "DRAFT", UUID.randomUUID())));
     when(rubrics.challengeCustomDimensions(overlay)).thenReturn(List.of(custom("a", 100)));
     when(rubrics.rubricKindOf(overlay)).thenReturn("MODULAR_CUSTOM");
@@ -210,6 +250,7 @@ class ChallengeRubricOverlayServiceTest {
 
   @Test void autosaveRejectsStaleRevision() {
     UUID course = UUID.randomUUID(), challenge = UUID.randomUUID(), overlay = UUID.randomUUID();
+    when(assignments.belongsToCourse(challenge, course)).thenReturn(true);
     var input = new ChallengeRubricOverlayService.OverlayInput("Overlay", "Guía",
         List.of(custom("a", 100)));
     when(rubrics.advanceChallengeRevision(course, challenge, overlay, 1)).thenReturn(false);
@@ -220,11 +261,33 @@ class ChallengeRubricOverlayServiceTest {
 
   @Test void validateRejectsIncompleteCustomDimension() {
     UUID course = UUID.randomUUID(), challenge = UUID.randomUUID(), overlay = UUID.randomUUID();
+    when(assignments.belongsToCourse(challenge, course)).thenReturn(true);
     var input = new ChallengeRubricOverlayService.OverlayInput("Overlay", "Guía",
         List.of(new DimensionCustomInput("", "Sin clave", "criterio", null, BigDecimal.valueOf(100))));
     assertThatThrownBy(() -> service.autosave(course, challenge, overlay, 1, input, actor))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessage("Cada dimensión custom debe incluir clave, título y criterio");
+  }
+
+  @Test void publishRejectsChallengeNotInCourse() {
+    UUID course = UUID.randomUUID(), challenge = UUID.randomUUID(), overlay = UUID.randomUUID();
+    when(assignments.belongsToCourse(challenge, course)).thenReturn(false);
+    assertThatThrownBy(() -> service.publish(course, challenge, overlay, actor))
+        .isInstanceOf(ResourceNotFoundException.class).hasMessage("El desafío no pertenece a este curso");
+  }
+
+  @Test void createNextVersionRejectsChallengeNotInCourse() {
+    UUID course = UUID.randomUUID(), challenge = UUID.randomUUID(), published = UUID.randomUUID();
+    when(assignments.belongsToCourse(challenge, course)).thenReturn(false);
+    assertThatThrownBy(() -> service.createNextVersion(course, challenge, published, actor))
+        .isInstanceOf(ResourceNotFoundException.class).hasMessage("El desafío no pertenece a este curso");
+  }
+
+  @Test void getEffectiveProfileRejectsChallengeNotInCourse() {
+    UUID course = UUID.randomUUID(), challenge = UUID.randomUUID(), overlay = UUID.randomUUID();
+    when(assignments.belongsToCourse(challenge, course)).thenReturn(false);
+    assertThatThrownBy(() -> service.getEffectiveProfile(course, challenge, overlay))
+        .isInstanceOf(ResourceNotFoundException.class).hasMessage("El desafío no pertenece a este curso");
   }
 
   private DimensionCustomInput custom(String key, int weight) {

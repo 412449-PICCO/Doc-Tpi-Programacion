@@ -235,7 +235,7 @@ public class RubricVersionRepository {
     // Crear la versiÃ³n del overlay con rubric_kind MODULAR_CUSTOM y baseline_version_id
     jdbc.update("""
         insert into llm.rubric_version_v2 (id, family_id, version_no, name, rubric_kind, user_prompt,
-            based_on_version_id, created_by_user_id)
+            baseline_version_id, created_by_user_id)
         values (?, ?, 1, ?, 'MODULAR_CUSTOM', '', ?, ?)
         """, versionId, familyId, name, baselineVersionId, actorId);
 
@@ -326,13 +326,14 @@ public class RubricVersionRepository {
         """, Integer.class, familyId);
 
     UUID newVersionId = UUID.randomUUID();
+    UUID baseline = baselineVersionIdOf(publishedVersionId);
 
     // Crear la nueva versiÃ³n
     jdbc.update("""
         insert into llm.rubric_version_v2 (id, family_id, version_no, name, rubric_kind, user_prompt,
-            based_on_version_id, created_by_user_id)
-        values (?, ?, ?, ?, 'MODULAR_CUSTOM', '', ?, ?)
-        """, newVersionId, familyId, nextVersion, published.get().name(), publishedVersionId, actorId);
+            baseline_version_id, based_on_version_id, created_by_user_id)
+        values (?, ?, ?, ?, 'MODULAR_CUSTOM', '', ?, ?, ?)
+        """, newVersionId, familyId, nextVersion, published.get().name(), baseline, publishedVersionId, actorId);
 
     // Copiar las dimensiones custom de la versiÃ³n publicada
     jdbc.update("""
@@ -383,8 +384,8 @@ public class RubricVersionRepository {
 
   /** Public accessor: baseline_version_id of a rubric version (used by ChallengeRubricOverlayService). */
   public UUID baselineVersionIdOf(UUID versionId) {
-    return jdbc.query("select based_on_version_id from llm.rubric_version_v2 where id = ?",
-        (rs, row) -> rs.getObject("based_on_version_id", UUID.class), versionId)
+    return jdbc.query("select baseline_version_id from llm.rubric_version_v2 where id = ?",
+        (rs, row) -> rs.getObject("baseline_version_id", UUID.class), versionId)
         .stream().findFirst().orElse(null);
   }
 

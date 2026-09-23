@@ -25,14 +25,14 @@ import static org.assertj.core.api.Assertions.assertThat;
  * H05 (ex-H08)·CA1/CA4: el contrato OpenAPI publicado describe únicamente operaciones que el servicio
  * construyó. Un PR que agregue al contrato una operación sin controller falla acá.
  *
- * <p>Compara el contrato {@code docsV2/contracts/llm-service.openapi.yaml} con los {@code @RestController}
+ * <p>Compara el contrato {@code docs/contracts/llm-service.openapi.yaml} con los {@code @RestController}
  * del módulo, sin levantar Spring ni la base. La dirección inversa (rutas construidas que el contrato
  * todavía no documenta) es deuda conocida y está fijada en {@link #UNDOCUMENTED_ROUTE_COUNT_CEILING}: solo
  * puede bajar.
  */
 class OpenApiContractTest {
 
-  private static final Path CONTRACT = Path.of("..", "docsV2", "contracts", "llm-service.openapi.yaml");
+  private static final Path CONTRACT = Path.of("..", "docs", "contracts", "llm-service.openapi.yaml");
   private static final String BASE_PACKAGE = "ar.edu.utn.frc.tup.piv.llm";
 
   /** Rutas del código que el contrato aún no documenta. Solo puede achicarse: no subir este número. */

@@ -445,6 +445,37 @@ paths:
         '200': { description: Estado actual, content: { application/json: { schema: { $ref: '#/components/schemas/ShadowRun' } } } }
         '403': { $ref: '#/components/responses/Problem' }
         '404': { $ref: '#/components/responses/Problem' }
+  /evaluator-skills:
+    get:
+      summary: List the evaluator skills catalog
+      operationId: listEvaluatorSkillCatalog
+      responses:
+        '200': { description: Catálogo de skills del evaluador, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/EvaluatorSkillResponse' } } } } }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+  /courses/{courseId}/evaluator-skills:
+    get:
+      summary: List the evaluator skills of a course with their activation state
+      operationId: listCourseEvaluatorSkills
+      parameters:
+        - $ref: '#/components/parameters/CourseId'
+      responses:
+        '200': { description: Skills del curso con su estado, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/EvaluatorSkillResponse' } } } } }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+    put:
+      summary: Configure the active evaluator skills of a course
+      operationId: updateCourseEvaluatorSkills
+      parameters:
+        - $ref: '#/components/parameters/CourseId'
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/UpdateCourseSkillsRequest' } } }
+      responses:
+        '200': { description: Skills del curso luego de la actualización, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/EvaluatorSkillResponse' } } } } }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
 components:
   securitySchemes:
     serviceJwt: {type: http, scheme: bearer, bearerFormat: JWT}
@@ -665,3 +696,17 @@ components:
           maxItems: 5
           items: { type: object, properties: { sourceRef: { type: string }, baselineFinal: { type: number }, candidateFinal: { type: number }, delta: { type: number } } }
         recommendation: { type: string, enum: [PROCEED_TO_CALIBRATION, REVIEW, INSUFFICIENT_DATA], description: "Consejo para el docente, no una decisión automática. PROCEED_TO_CALIBRATION habilita lanzar la calibración PAR-14 formal." }
+    EvaluatorSkillResponse:
+      type: object
+      required: [skillKey, name, description, toolType, isActive]
+      properties:
+        skillKey: {type: string, description: Clave canónica de la skill en el catálogo.}
+        name: {type: string}
+        description: {type: string}
+        toolType: {type: string, description: Tipo de herramienta con que se evalúa la skill.}
+        isActive: {type: boolean, description: Habilitada por defecto (catálogo) o activada para el curso.}
+    UpdateCourseSkillsRequest:
+      type: object
+      required: [activeSkillKeys]
+      properties:
+        activeSkillKeys: {type: array, items: {type: string}, description: Claves del catálogo que quedan activas para el curso. Reemplaza el set anterior.}

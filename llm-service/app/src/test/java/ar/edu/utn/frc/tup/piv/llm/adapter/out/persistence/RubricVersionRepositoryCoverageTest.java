@@ -505,10 +505,191 @@ class RubricVersionRepositoryCoverageTest {
     var jdbc = mock(JdbcTemplate.class);
     var repository = new RubricVersionRepository(jdbc, new ObjectMapper());
     UUID baseline = UUID.randomUUID();
-    when(jdbc.query(contains("select based_on_version_id"), any(RowMapper.class), any(UUID.class)))
-        .thenAnswer(rowsOf(r -> when(r.getObject("based_on_version_id", UUID.class)).thenReturn(baseline)));
+    when(jdbc.query(contains("select baseline_version_id"), any(RowMapper.class), any(UUID.class)))
+        .thenAnswer(rowsOf(r -> when(r.getObject("baseline_version_id", UUID.class)).thenReturn(baseline)));
 
     assertThat(repository.baselineVersionIdOf(UUID.randomUUID())).isEqualTo(baseline);
+  }
+
+  @Test
+  void createDraftForChallengeInsertsFamilyVersionAndReturnsTheOverlay() {
+    var jdbc = mock(JdbcTemplate.class);
+    var repository = new RubricVersionRepository(jdbc, new ObjectMapper());
+    when(jdbc.update(anyString(), any(Object[].class))).thenReturn(1);
+    when(jdbc.query(contains("from llm.rubric_version_v2 v where v.id = ?"), any(RowMapper.class), any(UUID.class)))
+        .thenAnswer(rowsOf(r -> {
+          when(r.getObject("id", UUID.class)).thenReturn(UUID.randomUUID());
+          when(r.getObject("family_id", UUID.class)).thenReturn(UUID.randomUUID());
+          when(r.getInt("version_no")).thenReturn(1);
+          when(r.getString("name")).thenReturn("Overlay");
+          when(r.getString("state")).thenReturn("DRAFT");
+          when(r.getLong("revision")).thenReturn(1L);
+          when(r.getObject("template_origin_version_id", UUID.class)).thenReturn(null);
+        }));
+    stubDimensions(jdbc);
+
+    var result = repository.createDraftForChallenge(UUID.randomUUID(), UUID.randomUUID(), "Overlay",
+        UUID.randomUUID(), UUID.randomUUID());
+
+    assertThat(result).isPresent();
+    assertThat(result.get().name()).isEqualTo("Overlay");
+    assertThat(result.get().state()).isEqualTo("DRAFT");
+    verify(jdbc, times(2)).update(anyString(), any(Object[].class));
+  }
+
+  @Test
+  void advanceChallengeRevisionReportsTheOutcome() {
+    var jdbc = mock(JdbcTemplate.class);
+    var repository = new RubricVersionRepository(jdbc, new ObjectMapper());
+    when(jdbc.update(anyString(), any(Object[].class))).thenReturn(1);
+    assertThat(repository.advanceChallengeRevision(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), 2)).isTrue();
+    when(jdbc.update(anyString(), any(Object[].class))).thenReturn(0);
+    assertThat(repository.advanceChallengeRevision(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), 2)).isFalse();
+  }
+
+  @Test
+  void updateChallengeVersionNameRenamesTheOverlay() {
+    var jdbc = mock(JdbcTemplate.class);
+    var repository = new RubricVersionRepository(jdbc, new ObjectMapper());
+
+    repository.updateChallengeVersionName(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), "Nuevo");
+
+    verify(jdbc).update(anyString(), any(Object[].class));
+  }
+
+  @Test
+  void updateChallengePromptUpdatesTheUserPrompt() {
+    var jdbc = mock(JdbcTemplate.class);
+    var repository = new RubricVersionRepository(jdbc, new ObjectMapper());
+
+    repository.updateChallengePrompt(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), "Instrucciones");
+
+    verify(jdbc).update(anyString(), any(Object[].class));
+  }
+
+  @Test
+  void replaceChallengeCustomDimensionsDeletesAndInsertsEachDimension() {
+    var jdbc = mock(JdbcTemplate.class);
+    var repository = new RubricVersionRepository(jdbc, new ObjectMapper());
+    when(jdbc.update(anyString(), any(Object[].class))).thenReturn(1);
+
+    repository.replaceChallengeCustomDimensions(UUID.randomUUID(), List.of());
+    verify(jdbc, times(1)).update(anyString(), any(Object[].class));
+
+    repository.replaceChallengeCustomDimensions(UUID.randomUUID(), List.of(customDimension(), customDimension()));
+    verify(jdbc, times(4)).update(anyString(), any(Object[].class));
+  }
+
+  @Test
+  void publishChallengeDraftReportsTheOutcome() {
+    var jdbc = mock(JdbcTemplate.class);
+    var repository = new RubricVersionRepository(jdbc, new ObjectMapper());
+    when(jdbc.update(anyString(), any(Object[].class))).thenReturn(1);
+    assertThat(repository.publishChallengeDraft(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID())).isTrue();
+    when(jdbc.update(anyString(), any(Object[].class))).thenReturn(0);
+    assertThat(repository.publishChallengeDraft(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID())).isFalse();
+  }
+
+  @Test
+  void createNextChallengeDraftReturnsEmptyWhenPublishedNotPresent() {
+    var jdbc = mock(JdbcTemplate.class);
+    var repository = new RubricVersionRepository(jdbc, new ObjectMapper());
+    when(jdbc.query(contains("f.scope = 'CHALLENGE' and v.id = ?"), any(RowMapper.class),
+        any(UUID.class), any(UUID.class), any(UUID.class)))
+        .thenReturn(List.of());
+
+    assertThat(repository.createNextChallengeDraft(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
+        UUID.randomUUID())).isEmpty();
+  }
+
+  @Test
+  void createNextChallengeDraftReturnsEmptyWhenPublishedNotPublished() {
+    var jdbc = mock(JdbcTemplate.class);
+    var repository = new RubricVersionRepository(jdbc, new ObjectMapper());
+    when(jdbc.query(contains("f.scope = 'CHALLENGE' and v.id = ?"), any(RowMapper.class),
+        any(UUID.class), any(UUID.class), any(UUID.class)))
+        .thenAnswer(rowsOf(r -> {
+          when(r.getObject("id", UUID.class)).thenReturn(UUID.randomUUID());
+          when(r.getObject("family_id", UUID.class)).thenReturn(UUID.randomUUID());
+          when(r.getInt("version_no")).thenReturn(1);
+          when(r.getString("name")).thenReturn("Overlay");
+          when(r.getString("state")).thenReturn("DRAFT");
+          when(r.getLong("revision")).thenReturn(1L);
+        }));
+    stubDimensions(jdbc);
+
+    assertThat(repository.createNextChallengeDraft(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
+        UUID.randomUUID())).isEmpty();
+  }
+
+  @Test
+  void createNextChallengeDraftCreatesTheNextOverlayVersion() {
+    var jdbc = mock(JdbcTemplate.class);
+    var repository = new RubricVersionRepository(jdbc, new ObjectMapper());
+    UUID family = UUID.randomUUID();
+    when(jdbc.query(contains("f.scope = 'CHALLENGE' and v.id = ?"), any(RowMapper.class),
+        any(UUID.class), any(UUID.class), any(UUID.class)))
+        .thenAnswer(rowsOf(r -> {
+          when(r.getObject("id", UUID.class)).thenReturn(UUID.randomUUID());
+          when(r.getObject("family_id", UUID.class)).thenReturn(family);
+          when(r.getInt("version_no")).thenReturn(2);
+          when(r.getString("name")).thenReturn("Overlay");
+          when(r.getString("state")).thenReturn("PUBLISHED");
+          when(r.getLong("revision")).thenReturn(1L);
+        }));
+    stubDimensions(jdbc);
+    when(jdbc.queryForObject(anyString(), eq(Integer.class), eq(family))).thenReturn(3);
+    when(jdbc.query(contains("select baseline_version_id"), any(RowMapper.class), any(UUID.class)))
+        .thenAnswer(rowsOf(r -> when(r.getObject("baseline_version_id", UUID.class)).thenReturn(UUID.randomUUID())));
+    when(jdbc.update(anyString(), any(Object[].class))).thenReturn(1);
+    when(jdbc.query(contains("from llm.rubric_version_v2 v where v.id = ?"), any(RowMapper.class), any(UUID.class)))
+        .thenAnswer(rowsOf(r -> {
+          when(r.getObject("id", UUID.class)).thenReturn(UUID.randomUUID());
+          when(r.getObject("family_id", UUID.class)).thenReturn(family);
+          when(r.getInt("version_no")).thenReturn(3);
+          when(r.getString("name")).thenReturn("Overlay");
+          when(r.getString("state")).thenReturn("DRAFT");
+          when(r.getLong("revision")).thenReturn(1L);
+          when(r.getObject("template_origin_version_id", UUID.class)).thenReturn(null);
+        }));
+
+    var result = repository.createNextChallengeDraft(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
+        UUID.randomUUID());
+
+    assertThat(result).isPresent();
+    assertThat(result.get().version()).isEqualTo(3);
+    assertThat(result.get().state()).isEqualTo("DRAFT");
+    verify(jdbc, times(2)).update(anyString(), any(Object[].class));
+  }
+
+  @Test
+  void rubricKindOfReturnsTheKindAndDefaultsToInstitutional() {
+    var jdbc = mock(JdbcTemplate.class);
+    var repository = new RubricVersionRepository(jdbc, new ObjectMapper());
+    when(jdbc.query(contains("select rubric_kind"), any(RowMapper.class), any(UUID.class)))
+        .thenAnswer(rowsOf(r -> when(r.getString("rubric_kind")).thenReturn("MODULAR_CUSTOM")));
+    assertThat(repository.rubricKindOf(UUID.randomUUID())).isEqualTo("MODULAR_CUSTOM");
+
+    when(jdbc.query(contains("select rubric_kind"), any(RowMapper.class), any(UUID.class))).thenReturn(List.of());
+    assertThat(repository.rubricKindOf(UUID.randomUUID())).isEqualTo("DEFAULT_INSTITUTIONAL");
+  }
+
+  @Test
+  void userPromptOfReturnsThePromptAndDefaultsToEmpty() {
+    var jdbc = mock(JdbcTemplate.class);
+    var repository = new RubricVersionRepository(jdbc, new ObjectMapper());
+    when(jdbc.query(contains("select user_prompt"), any(RowMapper.class), any(UUID.class)))
+        .thenAnswer(rowsOf(r -> when(r.getString("user_prompt")).thenReturn("Guía")));
+    assertThat(repository.userPromptOf(UUID.randomUUID())).isEqualTo("Guía");
+
+    when(jdbc.query(contains("select user_prompt"), any(RowMapper.class), any(UUID.class))).thenReturn(List.of());
+    assertThat(repository.userPromptOf(UUID.randomUUID())).isEmpty();
+  }
+
+  private static DimensionCustomInput customDimension() {
+    return new DimensionCustomInput("algoritmos", "Algoritmos", "Criterio",
+        new Anchors(new Anchor("bajo", 25, "ej"), new Anchor("medio", 60, "ej"), new Anchor("alto", 90, "ej")),
+        BigDecimal.valueOf(50));
   }
 
   @FunctionalInterface
