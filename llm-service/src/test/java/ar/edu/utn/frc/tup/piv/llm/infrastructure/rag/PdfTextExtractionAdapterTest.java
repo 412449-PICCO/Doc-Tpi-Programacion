@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.ByteArrayOutputStream;
+import ar.edu.utn.frc.tup.piv.llm.domain.rag.InvalidPdfSourceException;
 import java.io.IOException;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
@@ -32,20 +33,45 @@ class PdfTextExtractionAdapterTest {
 
   @Test
   void rejectsNullOrEmptyBytes() {
-    assertThatThrownBy(() -> adapter.extractTextWithPages(null)).isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> adapter.extractTextWithPages(new byte[0])).isInstanceOf(IllegalArgumentException.class);
+    // #669: pasó de IllegalArgumentException a un rechazo de fuente con motivo propio; ambos
+    // terminan en 422, pero ahora el mensaje dice cuál de los cinco casos se rechazó.
+    assertThatThrownBy(() -> adapter.extractTextWithPages(null))
+        .isInstanceOf(InvalidPdfSourceException.class).hasMessageContaining("vacío");
+    assertThatThrownBy(() -> adapter.extractTextWithPages(new byte[0]))
+        .isInstanceOf(InvalidPdfSourceException.class).hasMessageContaining("vacío");
+  }
+
+  /** #669 — `Loader.loadPDF` lanza `InvalidPasswordException` para un PDF con contraseña real
+   * ANTES de que el adaptador pueda chequear `document.isEncrypted()`. Antes esa IOException
+   * escapaba sin mapear (500); ahora se traduce a un rechazo con el motivo exacto. */
+  @Test
+  void aPasswordProtectedPdfIsRejectedAsEncrypted() throws Exception {
+    byte[] pdf = encryptedPdf();
+
+    assertThatThrownBy(() -> adapter.extractTextWithPages(pdf))
+        .isInstanceOf(InvalidPdfSourceException.class)
+        .hasMessageContaining("contraseña");
+  }
+
+  /** #669 — el caso que documentaba `TutorRagIT` como pendiente: un archivo que no es PDF hacía
+   * escapar la IOException de PDFBox como 500. */
+  @Test
+  void aFileThatIsNotAPdfIsRejectedAsUnreadable() {
+    byte[] docx = new byte[] {0x50, 0x4B, 0x03, 0x04, 0x14, 0x00, 0x06, 0x00, 0x08, 0x00};
+
+    assertThatThrownBy(() -> adapter.extractTextWithPages(docx))
+        .isInstanceOf(InvalidPdfSourceException.class)
+        .hasMessageContaining("no se pudo abrir como PDF");
   }
 
   @Test
-  void aPasswordProtectedPdfFailsAtLoadTimeBeforeTheEncryptedCheckCanRun() throws Exception {
-    // Loader.loadPDF lanza InvalidPasswordException (una IOException) para un PDF con contraseña
-    // real ANTES de que el adaptador llegue a chequear document.isEncrypted() — mismo
-    // comportamiento heredado de demoLLMSpringAi/.../PdfTextExtractorService.java, no un bug
-    // introducido acá. Por eso RagIngestionService.extractOrFail atrapa la IOException y la
-    // traduce a un 422 claro en vez de dejarla escapar como 500 (ver esa clase).
-    byte[] pdf = encryptedPdf();
+  void aTruncatedPdfIsRejectedAsUnreadable() throws Exception {
+    byte[] valido = pdfWithText("contenido");
+    byte[] truncado = java.util.Arrays.copyOf(valido, valido.length / 2);
 
-    assertThatThrownBy(() -> adapter.extractTextWithPages(pdf)).isInstanceOf(IOException.class);
+    assertThatThrownBy(() -> adapter.extractTextWithPages(truncado))
+        .isInstanceOf(InvalidPdfSourceException.class)
+        .hasMessageContaining("dañado");
   }
 
   private byte[] pdfWithText(String text) throws IOException {

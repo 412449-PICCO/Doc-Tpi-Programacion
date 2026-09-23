@@ -58,7 +58,7 @@ class RagIngestionServiceBranchesTest {
     stubPdf(LONG_TEXT);
     when(diagrams.detectImages(any())).thenReturn(List.of());
 
-    RagDocument doc = service.upload(UUID.randomUUID(), "GRANDE.PDF", "x".getBytes(), UUID.randomUUID(), actor);
+    RagDocument doc = service.upload(UUID.randomUUID(), "GRANDE.PDF", fakePdf("x"), UUID.randomUUID(), actor);
 
     assertThat(doc.previewText()).hasSize(253).endsWith("...");
     assertThat(doc.chunkCount()).isGreaterThan(0);
@@ -75,7 +75,7 @@ class RagIngestionServiceBranchesTest {
         new DiagramDecodeResult(0, 2, "Arquitectura", "DIAGRAMA_DOCUMENTO", null, null, List.of()));
     when(diagrams.decodeDiagram(any(), eq(1))).thenReturn(DiagramDecodeResult.vacio(1));
 
-    RagDocument doc = service.upload(UUID.randomUUID(), "d.pdf", "x".getBytes(), UUID.randomUUID(), actor);
+    RagDocument doc = service.upload(UUID.randomUUID(), "d.pdf", fakePdf("x"), UUID.randomUUID(), actor);
 
     assertThat(doc.chunkCount()).isEqualTo(1);
     @SuppressWarnings("unchecked") ArgumentCaptor<List<DocumentChunk>> captor = ArgumentCaptor.forClass(List.class);
@@ -90,7 +90,7 @@ class RagIngestionServiceBranchesTest {
     stubPdf(LONG_TEXT);
     when(diagrams.detectImages(any())).thenThrow(new IllegalStateException("boom"));
 
-    RagDocument doc = service.upload(UUID.randomUUID(), "d.pdf", "x".getBytes(), UUID.randomUUID(), actor);
+    RagDocument doc = service.upload(UUID.randomUUID(), "d.pdf", fakePdf("x"), UUID.randomUUID(), actor);
 
     assertThat(doc.chunkCount()).isGreaterThan(0);
     verify(vectorStore).indexChunks(any(), anyList(), anyList());
@@ -102,7 +102,7 @@ class RagIngestionServiceBranchesTest {
     when(diagrams.detectImages(any())).thenReturn(List.of());
     doThrow(new IllegalStateException("vector store caído")).when(vectorStore).indexChunks(any(), anyList(), anyList());
 
-    assertThatThrownBy(() -> service.upload(UUID.randomUUID(), "d.pdf", "x".getBytes(), UUID.randomUUID(), actor))
+    assertThatThrownBy(() -> service.upload(UUID.randomUUID(), "d.pdf", fakePdf("x"), UUID.randomUUID(), actor))
         .isInstanceOf(IllegalStateException.class).hasMessage("vector store caído");
 
     ArgumentCaptor<UUID> id = ArgumentCaptor.forClass(UUID.class);
@@ -137,4 +137,11 @@ class RagIngestionServiceBranchesTest {
     assertThat(chunk.getValue().documentName()).isEqualTo("m.pdf");
     assertThat(chunk.getValue().content()).contains("Interpretación:").contains("Tipo: FLUJO");
   }
+
+  /** #669 — la ingesta ahora valida la firma binaria, así que un doble de PDF tiene que empezar
+   * con `%PDF-` aunque el extractor esté mockeado. */
+  private static byte[] fakePdf(String contenido) {
+    return ("%PDF-1.7\n" + contenido).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+  }
+
 }

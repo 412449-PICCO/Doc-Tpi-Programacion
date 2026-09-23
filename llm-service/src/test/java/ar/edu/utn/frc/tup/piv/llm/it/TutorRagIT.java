@@ -173,8 +173,19 @@ class TutorRagIT extends AbstractIntegrationIT {
         .param("courseCohortId", cohort.toString()).header("X-Principal-Type", "service").header("X-Service-Id", "practice-service")
         .header("X-Service-Scopes", "llm.rag.query").header("X-Delegated-User", TEACHER.toString()).header("Idempotency-Key", UUID.randomUUID().toString()).header("X-User-Roles", "TEACHER").header("X-Teacher-Course-Ids", cohort.toString()))
         .andExpect(status().isUnprocessableEntity());
-    // Un archivo que no es PDF ya no se traduce a 422: tras el merge con dev la IOException de PDFBox escapa sin mapear
-    // (dev quitó la validación de extensión y el catch en RagIngestionService). Pendiente de decidir con quien lo mantiene.
+    // #669: un archivo que no es PDF vuelve a rechazarse con 422 y motivo propio. Se valida por
+    // firma binaria, no por extensión ni Content-Type: acá va un .docx (ZIP) renombrado a .pdf.
+    byte[] docx = new byte[] {0x50, 0x4B, 0x03, 0x04, 0x14, 0x00, 0x06, 0x00, 0x08, 0x00};
+    mvc.perform(multipart("/api/llm/rag/documents").file(new MockMultipartFile("file", "trabajo.pdf", "application/pdf", docx))
+        .param("courseCohortId", cohort.toString()).header("X-Principal-Type", "service").header("X-Service-Id", "practice-service")
+        .header("X-Service-Scopes", "llm.rag.query").header("X-Delegated-User", TEACHER.toString())
+        .header("Idempotency-Key", UUID.randomUUID().toString()).header("X-User-Roles", "TEACHER")
+        .header("X-Teacher-Course-Ids", cohort.toString()))
+        .andExpect(status().isUnprocessableEntity());
+    // Y nada quedó indexado tras los dos rechazos.
+    assertThat(body(mvc.perform(cohortTeacher(practice(get("/api/llm/rag/documents")), cohort).param("courseCohortId", cohort.toString()))
+        .andExpect(status().isOk())).size()).isZero();
+
     mvc.perform(practice(get("/api/llm/rag/documents/" + UUID.randomUUID() + "/images"))).andExpect(status().is4xxClientError());
   }
 }

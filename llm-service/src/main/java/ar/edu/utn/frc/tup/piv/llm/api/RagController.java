@@ -60,6 +60,8 @@ public class RagController {
       @RequestHeader HttpHeaders headers) throws IOException {
     CallerIdentity actor = authorization.require(headers);
     courseAuthorization.requireTeacher(courseCohortId, actor, headers);
+    // Corta por tamaño antes de materializar el archivo en memoria (#669).
+    ingestion.validateDeclaredUploadSize(file.getSize(), file.getOriginalFilename());
     RagDocument document = ingestion.upload(courseCohortId, file.getOriginalFilename(), file.getBytes(),
         idempotencyKey, actor);
     return ResponseEntity.status(HttpStatus.CREATED).body(document);

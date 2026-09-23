@@ -68,6 +68,12 @@ public class ApiExceptionHandler {
     p.setProperty("error", "validation_error");
     return p;
   }
+  @ExceptionHandler(ar.edu.utn.frc.tup.piv.llm.domain.rag.InvalidPdfSourceException.class)
+  ProblemDetail invalidPdfSource(ar.edu.utn.frc.tup.piv.llm.domain.rag.InvalidPdfSourceException exception, HttpServletRequest request) {
+    ProblemDetail p = problem(HttpStatus.UNPROCESSABLE_ENTITY, exception.getMessage(), request);
+    p.setProperty("error", "invalid_source_file");
+    return p;
+  }
   @ExceptionHandler(ar.edu.utn.frc.tup.piv.llm.domain.rag.RagDocumentNotFoundException.class)
   ProblemDetail ragDocumentNotFound(ar.edu.utn.frc.tup.piv.llm.domain.rag.RagDocumentNotFoundException exception, HttpServletRequest request) {
     return problem(HttpStatus.NOT_FOUND, exception.getMessage(), request);

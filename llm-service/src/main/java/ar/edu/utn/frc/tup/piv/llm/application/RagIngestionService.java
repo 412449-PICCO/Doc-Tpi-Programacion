@@ -7,6 +7,7 @@ import ar.edu.utn.frc.tup.piv.llm.domain.rag.DocumentChunk;
 import ar.edu.utn.frc.tup.piv.llm.domain.rag.ExtractedPdf;
 import ar.edu.utn.frc.tup.piv.llm.domain.rag.ImageDetection;
 import ar.edu.utn.frc.tup.piv.llm.domain.rag.PdfTextExtractionPort;
+import ar.edu.utn.frc.tup.piv.llm.domain.rag.PdfUploadValidator;
 import ar.edu.utn.frc.tup.piv.llm.domain.rag.RagDocument;
 import ar.edu.utn.frc.tup.piv.llm.domain.rag.RagDocumentNotFoundException;
 import ar.edu.utn.frc.tup.piv.llm.domain.rag.TextChunker;
@@ -53,6 +54,7 @@ public class RagIngestionService {
   private final IdempotencyRepository idempotency;
   private final ObjectMapper mapper;
   private final TextChunker chunker = new TextChunker();
+  private final PdfUploadValidator uploadValidator;
   private final long maxUploadBytes;
   private final Duration embeddingTimeout;
 
@@ -69,6 +71,7 @@ public class RagIngestionService {
     this.idempotency = idempotency;
     this.mapper = mapper;
     this.maxUploadBytes = maxUploadBytes;
+    this.uploadValidator = new PdfUploadValidator(maxUploadBytes);
     this.embeddingTimeout = Duration.ofMillis(embeddingTimeoutMs);
   }
 
@@ -78,6 +81,8 @@ public class RagIngestionService {
     if (courseCohortId == null) {
       throw new IllegalArgumentException("courseCohortId es obligatorio");
     }
+
+    uploadValidator.validateContent(bytes, fileName);
 
     String hash = hash(courseCohortId, fileName, bytes);
     Optional<JsonNode> replay = idempotency.replay(OPERATION, actor, idempotencyKey, hash);
@@ -151,6 +156,12 @@ public class RagIngestionService {
     } catch (Exception ignored) {
       // Aviso, no aborta la indexación del documento — mismo criterio que la demo.
     }
+  }
+
+  /** Tamaño declarado por el cliente, para cortar antes de cargar el archivo entero en memoria
+   * (#669). El límite real lo vuelve a verificar {@link #upload} sobre los bytes ya leídos. */
+  public void validateDeclaredUploadSize(long sizeInBytes, String fileName) {
+    uploadValidator.validateDeclaredSize(sizeInBytes, fileName);
   }
 
   public List<RagDocument> list(UUID courseCohortId) {

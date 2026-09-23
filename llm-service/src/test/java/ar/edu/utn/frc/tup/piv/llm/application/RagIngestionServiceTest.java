@@ -8,6 +8,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import ar.edu.utn.frc.tup.piv.llm.domain.ai.EmbeddingResult;
@@ -16,6 +17,7 @@ import ar.edu.utn.frc.tup.piv.llm.domain.rag.DiagramDetectionPort;
 import ar.edu.utn.frc.tup.piv.llm.domain.rag.ExtractedPage;
 import ar.edu.utn.frc.tup.piv.llm.domain.rag.ExtractedPdf;
 import ar.edu.utn.frc.tup.piv.llm.domain.rag.ImageDetection;
+import ar.edu.utn.frc.tup.piv.llm.domain.rag.InvalidPdfSourceException;
 import ar.edu.utn.frc.tup.piv.llm.domain.rag.PdfTextExtractionPort;
 import ar.edu.utn.frc.tup.piv.llm.domain.rag.RagDocument;
 import ar.edu.utn.frc.tup.piv.llm.domain.rag.RagDocumentNotFoundException;
@@ -39,7 +41,7 @@ class RagIngestionServiceTest {
     var service = buildService(mock(PdfTextExtractionPort.class), mock(DiagramDetectionPort.class),
         mock(VectorStorePort.class), mock(RagDocumentRepository.class), mock(EmbeddingInvocationService.class));
 
-    assertThatThrownBy(() -> service.upload(null, "doc.pdf", new byte[] {1, 2, 3}, UUID.randomUUID(), actor))
+    assertThatThrownBy(() -> service.upload(null, "doc.pdf", fakePdf("123"), UUID.randomUUID(), actor))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
@@ -58,7 +60,7 @@ class RagIngestionServiceTest {
     when(embeddings.embedBatch(anyList(), any())).thenReturn(List.of(new EmbeddingResult(new float[768], "fake", "fake-embedding-768")));
 
     var service = buildService(extractor, diagrams, vectorStore, documents, embeddings);
-    RagDocument result = service.upload(UUID.randomUUID(), "docker.pdf", "contenido pdf simulado".getBytes(), UUID.randomUUID(), actor);
+    RagDocument result = service.upload(UUID.randomUUID(), "docker.pdf", fakePdf("contenido pdf simulado"), UUID.randomUUID(), actor);
 
     assertThat(result.fileName()).isEqualTo("docker.pdf");
     assertThat(result.chunkCount()).isEqualTo(1);
@@ -80,7 +82,7 @@ class RagIngestionServiceTest {
     when(embeddings.embedBatch(anyList(), any())).thenReturn(List.of(new EmbeddingResult(new float[768], "fake", "fake-embedding-768")));
 
     RagIngestionService service = buildService(extractor, diagrams, vectorStore, documents, embeddings);
-    service.upload(UUID.randomUUID(), "docker.pdf", "contenido pdf simulado".getBytes(), UUID.randomUUID(), actor);
+    service.upload(UUID.randomUUID(), "docker.pdf", fakePdf("contenido pdf simulado"), UUID.randomUUID(), actor);
 
     org.mockito.InOrder inOrder = org.mockito.Mockito.inOrder(documents, vectorStore);
     inOrder.verify(documents).save(any(), any());
@@ -98,7 +100,7 @@ class RagIngestionServiceTest {
         mock(DiagramDetectionPort.class), mock(VectorStorePort.class), mock(RagDocumentRepository.class),
         mock(EmbeddingInvocationService.class), idempotency, mapper, 26_214_400L, 8000L);
 
-    RagDocument result = service.upload(UUID.randomUUID(), "docker.pdf", "bytes".getBytes(), UUID.randomUUID(), actor);
+    RagDocument result = service.upload(UUID.randomUUID(), "docker.pdf", fakePdf("bytes"), UUID.randomUUID(), actor);
 
     assertThat(result.fileName()).isEqualTo(stored.fileName());
     assertThat(result.pageCount()).isEqualTo(stored.pageCount());
@@ -127,7 +129,7 @@ class RagIngestionServiceTest {
         idempotency, new ObjectMapper().findAndRegisterModules(), 26_214_400L, 8000L);
 
     UUID idempotencyKey = UUID.randomUUID();
-    service.upload(UUID.randomUUID(), "docker.pdf", "contenido pdf simulado".getBytes(), idempotencyKey, actor);
+    service.upload(UUID.randomUUID(), "docker.pdf", fakePdf("contenido pdf simulado"), idempotencyKey, actor);
 
     verify(idempotency).complete(anyString(), org.mockito.ArgumentMatchers.eq(actor),
         org.mockito.ArgumentMatchers.eq(idempotencyKey), any(UUID.class), any(JsonNode.class));
@@ -147,9 +149,58 @@ class RagIngestionServiceTest {
     when(embeddings.embedBatch(anyList(), any())).thenReturn(List.of());
 
     var service = buildService(extractor, diagrams, vectorStore, documents, embeddings);
-    RagDocument result = service.upload(UUID.randomUUID(), "sin-figuras.pdf", "bytes".getBytes(), UUID.randomUUID(), actor);
+    RagDocument result = service.upload(UUID.randomUUID(), "sin-figuras.pdf", fakePdf("bytes"), UUID.randomUUID(), actor);
 
     assertThat(result.chunkCount()).isZero();
+  }
+
+  /** #669 — un archivo rechazado no deja rastro: ni fila en `rag_documents`, ni chunks, ni
+   * `pdf_bytes` a medio guardar. La validación corre antes de tocar la base. */
+  @Test
+  void aRejectedUploadPersistsNothing() {
+    var documents = mock(RagDocumentRepository.class);
+    var vectorStore = mock(VectorStorePort.class);
+    var extractor = mock(PdfTextExtractionPort.class);
+    var idempotency = mock(IdempotencyRepository.class);
+    var service = new RagIngestionService(extractor, mock(DiagramDetectionPort.class), vectorStore, documents,
+        mock(EmbeddingInvocationService.class), idempotency, new ObjectMapper().findAndRegisterModules(), 26_214_400L, 8000L);
+    // Un .docx renombrado: firma ZIP "PK\003\004", no "%PDF-".
+    byte[] docx = new byte[] {0x50, 0x4B, 0x03, 0x04, 0x14, 0x00, 0x06, 0x00};
+
+    assertThatThrownBy(() -> service.upload(UUID.randomUUID(), "trabajo.pdf", docx, UUID.randomUUID(), actor))
+        .isInstanceOf(InvalidPdfSourceException.class)
+        .hasMessageContaining("no es un PDF");
+
+    verify(documents, never()).save(any(), any());
+    verify(vectorStore, never()).indexChunks(any(), anyList(), anyList());
+    verify(vectorStore, never()).addChunk(any(), any());
+    // Ni siquiera se intenta extraer texto ni se reserva una clave de idempotencia.
+    verifyNoInteractions(extractor);
+    verifyNoInteractions(idempotency);
+  }
+
+  @Test
+  void anUploadOverTheSizeLimitIsRejectedBeforeReadingTheFile() {
+    var documents = mock(RagDocumentRepository.class);
+    var service = buildService(mock(PdfTextExtractionPort.class), mock(DiagramDetectionPort.class),
+        mock(VectorStorePort.class), documents, mock(EmbeddingInvocationService.class));
+
+    assertThatThrownBy(() -> service.validateDeclaredUploadSize(26_214_401L, "enorme.pdf"))
+        .isInstanceOf(InvalidPdfSourceException.class)
+        .hasMessageContaining("supera el máximo permitido");
+    verify(documents, never()).save(any(), any());
+  }
+
+  @Test
+  void anEmptyUploadIsRejectedWithItsOwnMessage() {
+    var documents = mock(RagDocumentRepository.class);
+    var service = buildService(mock(PdfTextExtractionPort.class), mock(DiagramDetectionPort.class),
+        mock(VectorStorePort.class), documents, mock(EmbeddingInvocationService.class));
+
+    assertThatThrownBy(() -> service.upload(UUID.randomUUID(), "vacio.pdf", new byte[0], UUID.randomUUID(), actor))
+        .isInstanceOf(InvalidPdfSourceException.class)
+        .hasMessageContaining("vacío");
+    verify(documents, never()).save(any(), any());
   }
 
   @Test
@@ -208,7 +259,7 @@ class RagIngestionServiceTest {
   void getPdfBytesReturnsTheBytesWhenTheDocumentExists() {
     var documents = mock(RagDocumentRepository.class);
     UUID id = UUID.randomUUID();
-    byte[] bytes = "pdf".getBytes();
+    byte[] bytes = fakePdf("pdf");
     when(documents.findById(id)).thenReturn(Optional.of(sampleDocument(id)));
     when(documents.getPdfBytes(id)).thenReturn(bytes);
     var service = buildService(mock(PdfTextExtractionPort.class), mock(DiagramDetectionPort.class),
@@ -262,7 +313,7 @@ class RagIngestionServiceTest {
   @Test
   void detectImagesDelegatesToTheDiagramDetectionPort() {
     var diagrams = mock(DiagramDetectionPort.class);
-    byte[] bytes = "pdf".getBytes();
+    byte[] bytes = fakePdf("pdf");
     var expected = List.of(new ImageDetection(0, 1, 200, 200, "png", "data:...", "Figura 1"));
     when(diagrams.detectImages(bytes)).thenReturn(expected);
     var service = buildService(mock(PdfTextExtractionPort.class), diagrams,
@@ -274,7 +325,7 @@ class RagIngestionServiceTest {
   @Test
   void decodeImageDelegatesToTheDiagramDetectionPort() {
     var diagrams = mock(DiagramDetectionPort.class);
-    byte[] bytes = "pdf".getBytes();
+    byte[] bytes = fakePdf("pdf");
     var expected = DiagramDecodeResult.vacio(0);
     when(diagrams.decodeDiagram(bytes, 0)).thenReturn(expected);
     var service = buildService(mock(PdfTextExtractionPort.class), diagrams,
@@ -364,4 +415,11 @@ class RagIngestionServiceTest {
     return new RagIngestionService(extractor, diagrams, vectorStore, documents, embeddings, idempotency,
         new ObjectMapper().findAndRegisterModules(), 26_214_400L, 8000L);
   }
+
+  /** #669 — la ingesta ahora valida la firma binaria, así que un doble de PDF tiene que empezar
+   * con `%PDF-` aunque el extractor esté mockeado. */
+  private static byte[] fakePdf(String contenido) {
+    return ("%PDF-1.7\n" + contenido).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+  }
+
 }

@@ -2,12 +2,14 @@ package ar.edu.utn.frc.tup.piv.llm.infrastructure.rag;
 
 import ar.edu.utn.frc.tup.piv.llm.domain.rag.ExtractedPage;
 import ar.edu.utn.frc.tup.piv.llm.domain.rag.ExtractedPdf;
+import ar.edu.utn.frc.tup.piv.llm.domain.rag.InvalidPdfSourceException;
 import ar.edu.utn.frc.tup.piv.llm.domain.rag.PdfTextExtractionPort;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.encryption.InvalidPasswordException;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.springframework.stereotype.Component;
 
@@ -19,16 +21,22 @@ public class PdfTextExtractionAdapter implements PdfTextExtractionPort {
   @Override
   public ExtractedPdf extractTextWithPages(byte[] pdfBytes) throws IOException {
     if (pdfBytes == null || pdfBytes.length == 0) {
-      throw new IllegalArgumentException("El archivo PDF está vacío o no contiene bytes válidos.");
+      throw new InvalidPdfSourceException("El archivo está vacío: no tiene contenido para indexar.");
     }
 
     List<ExtractedPage> extractedPages = new ArrayList<>();
     StringBuilder fullTextBuilder = new StringBuilder();
 
-    try (PDDocument document = Loader.loadPDF(pdfBytes)) {
+    try (PDDocument document = openOrReject(pdfBytes)) {
+      // Un PDF con contraseña de usuario no lo abre PDFBox; uno con permisos restringidos sí, y
+      // tampoco es material indexable: la cátedra no puede garantizar su lectura.
+      if (document.isEncrypted()) {
+        throw new InvalidPdfSourceException(
+            "El archivo está protegido con contraseña. Subí una copia sin cifrar para poder indexarlo.");
+      }
       int totalPages = document.getNumberOfPages();
       if (totalPages == 0) {
-        throw new IllegalArgumentException("El archivo PDF no contiene páginas.");
+        throw new InvalidPdfSourceException("El archivo es un PDF sin páginas: no hay contenido para indexar.");
       }
 
       PDFTextStripper stripper = new PDFTextStripper();
@@ -42,6 +50,20 @@ public class PdfTextExtractionAdapter implements PdfTextExtractionPort {
         }
       }
       return new ExtractedPdf(totalPages, extractedPages, fullTextBuilder.toString().trim());
+    }
+  }
+
+  /** PDFBox distingue el PDF cifrado del simplemente ilegible; los dos se rechazan como fuente
+   * inválida (#669), pero con mensajes distintos para que el docente sepa qué corregir. */
+  private PDDocument openOrReject(byte[] pdfBytes) {
+    try {
+      return Loader.loadPDF(pdfBytes);
+    } catch (InvalidPasswordException exception) {
+      throw new InvalidPdfSourceException(
+          "El archivo está protegido con contraseña. Subí una copia sin cifrar para poder indexarlo.");
+    } catch (IOException exception) {
+      throw new InvalidPdfSourceException(
+          "El archivo no se pudo abrir como PDF: está dañado o no es realmente un PDF.");
     }
   }
 

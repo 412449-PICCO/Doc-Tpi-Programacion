@@ -24,6 +24,14 @@ spring:
         default_schema: llm
   jackson:
     default-property-inclusion: non_null
+  servlet:
+    multipart:
+      # Red de seguridad del limite de 25MB de la ingesta RAG (#669): corta en el borde, antes de
+      # que el archivo llegue al controller. El limite de negocio con su mensaje propio vive en
+      # PdfUploadValidator (llm.rag.max-upload-bytes); este es el mismo valor mas el overhead del
+      # encabezado multipart.
+      max-file-size: 25MB
+      max-request-size: 26MB
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     producer:
