@@ -47,6 +47,31 @@ class RagChatServiceTest {
     verify(vectorStore, never()).searchTopK(any(), any(), any(), org.mockito.ArgumentMatchers.anyInt());
   }
 
+  /** #677 — la abstención por falta de fuente explica el motivo al alumno (no es un error genérico)
+   * y no consume presupuesto: cero tokens y ninguna llamada al AI Gateway ni al embeddings. */
+  @Test
+  void theNoSourceAbstentionExplainsItselfAndSpendsNoTokens() {
+    var models = mock(ModelInvocationService.class);
+    var embeddings = mock(EmbeddingInvocationService.class);
+    var vectorStore = mock(VectorStorePort.class);
+    var service = buildServiceWithEmbeddings(models, embeddings, vectorStore, mock(RagDocumentRepository.class),
+        mock(ConversationRepository.class), mock(MessageRepository.class));
+
+    var response = service.responder(
+        new RagChatService.Request(UUID.randomUUID(), UUID.randomUUID(), List.of(), "¿qué es Docker?", null),
+        UUID.randomUUID(), actor);
+
+    assertThat(response.estado()).isEqualTo("BLOCKED_NO_SOURCE");
+    assertThat(response.respuesta()).contains("fuente");
+    assertThat(response.mensajeValidacion()).isNotBlank();
+    assertThat(response.tokensGastados()).isZero();
+    assertThat(response.cached()).isFalse();
+    assertThat(response.fuentes()).isEmpty();
+    verify(models, never()).invoke(any(), anyString(), anyString(), any());
+    verify(embeddings, never()).embed(any(), any());
+    verify(vectorStore, never()).searchTopK(any(), any(), any(), org.mockito.ArgumentMatchers.anyInt());
+  }
+
   @Test
   void documentsFromAnotherCohortAreNeverAuthorized() {
     var documents = mock(RagDocumentRepository.class);
