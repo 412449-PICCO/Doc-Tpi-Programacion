@@ -106,13 +106,28 @@ public class RagQueryGuardrail {
   }
 
   public Optional<RagChatService.Response> getCachedResponse(String cacheKey, String pregunta) {
-    return Optional.ofNullable(queryCache.get(cacheKey + ":" + normalizeForProfanity(pregunta.trim())));
+    return Optional.ofNullable(queryCache.get(cacheKey + ":" + normalizeForCache(pregunta)));
   }
 
   public void cacheResponse(String cacheKey, String pregunta, RagChatService.Response response) {
     if (response != null && "OK".equals(response.estado())) {
-      queryCache.put(cacheKey + ":" + normalizeForProfanity(pregunta.trim()), response);
+      queryCache.put(cacheKey + ":" + normalizeForCache(pregunta), response);
     }
+  }
+
+  /** Normalización de la pregunta para la clave de caché (#679): minúsculas, acentos plegados y
+   * espacios colapsados. Deliberadamente NO usa {@link #normalizeForProfanity}: ese normalizador
+   * sustituye dígitos por letras (4→a, 3→e, 1→i, 0→o, 5→s) para desarmar el leetspeak, y usarlo
+   * como clave hacía colisionar preguntas distintas — "¿qué dice el capítulo 3?" y "que dice el
+   * capitulo e" compartían slot, sirviendo una respuesta ajena a la pregunta.
+   *
+   * <p>Plegar mayúsculas y acentos sí es deseable: "¿Qué es RAG?" y "que es rag" son la misma
+   * pregunta y el costo de acertar de más es servir una respuesta correcta sin gastar tokens. La
+   * puntuación se conserva: "¿cómo no funciona?" no es "como no funciona". */
+  private String normalizeForCache(String pregunta) {
+    if (pregunta == null) return "";
+    String decomposed = Normalizer.normalize(pregunta.trim().toLowerCase(Locale.ROOT), Normalizer.Form.NFD);
+    return decomposed.replaceAll("\\p{M}", "").replaceAll("\\s+", " ");
   }
 
   private boolean containsProfanity(String normalizedText) {

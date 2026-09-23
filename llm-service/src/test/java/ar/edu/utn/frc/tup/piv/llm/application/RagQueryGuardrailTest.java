@@ -93,6 +93,31 @@ class RagQueryGuardrailTest {
     assertThat(guardrail.getCachedResponse("doc-1", "¿QUÉ ES DOCKER?")).isPresent(); // normalización case-insensitive
   }
 
+  /** #679 — dos preguntas distintas no pueden compartir slot. El normalizador de caché no aplica
+   * el desarmado de leetspeak del filtro de profanidad (4→a, 3→e, 1→i, 0→o, 5→s), que hacía
+   * colisionar "capítulo 3" con "capitulo e" y servía una respuesta ajena a la pregunta. */
+  @Test
+  void questionsThatOnlyDifferInDigitsAreDifferentCacheEntries() {
+    var response = new RagChatService.Response("el capítulo 3 trata de RAG", "OK", "msg", 10, false,
+        "Profesor Tutor Pedagógico", List.of(), null);
+    guardrail.cacheResponse("doc-3", "¿qué dice el capítulo 3?", response);
+
+    assertThat(guardrail.getCachedResponse("doc-3", "¿qué dice el capítulo 3?")).isPresent();
+    assertThat(guardrail.getCachedResponse("doc-3", "¿qué dice el capitulo e?")).isEmpty();
+    assertThat(guardrail.getCachedResponse("doc-3", "¿qué dice el capítulo 4?")).isEmpty();
+  }
+
+  /** #679 — espacios de más y acentos no crean entradas nuevas; la puntuación sí distingue. */
+  @Test
+  void theCacheKeyCollapsesWhitespaceAndAccentsButKeepsPunctuation() {
+    var response = new RagChatService.Response("respuesta", "OK", "msg", 10, false, "Profesor Tutor Pedagógico", List.of(), null);
+    guardrail.cacheResponse("doc-4", "¿Qué es RAG?", response);
+
+    assertThat(guardrail.getCachedResponse("doc-4", "  ¿QUE   es  rag?  ")).isPresent();
+    // La puntuación sí distingue: se conserva a propósito (un signo puede cambiar la pregunta).
+    assertThat(guardrail.getCachedResponse("doc-4", "que es rag")).isEmpty();
+  }
+
   @Test
   void aBlockedResponseIsNeverCached() {
     var response = new RagChatService.Response("bloqueada", "BLOCKED_PROFANITY", "msg", 0, false, "Profesor Tutor Pedagógico", List.of(), null);

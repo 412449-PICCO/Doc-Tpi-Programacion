@@ -277,6 +277,113 @@ class RagChatServiceTest {
     verify(models, org.mockito.Mockito.times(1)).invoke(any(), anyString(), anyString(), any());
   }
 
+  /** #679 — el conjunto de fuentes se normaliza (ordenado y deduplicado) antes de formar la clave:
+   * elegir las mismas dos fuentes en otro orden pega en la misma entrada. */
+  @Test
+  void theSameSourcesInADifferentOrderHitTheSameCacheEntry() {
+    UUID a = UUID.randomUUID();
+    UUID b = UUID.randomUUID();
+    UUID cohort = UUID.randomUUID();
+    var models = answeringModel();
+    var service = cachingService(models, activeDocumentsRepository(cohort, a, b));
+    String pregunta = "¿qué es Docker y en qué se diferencia de una VM?";
+
+    var first = service.responder(new RagChatService.Request(cohort, UUID.randomUUID(), List.of(a, b), pregunta, null),
+        UUID.randomUUID(), anotherActor());
+    var second = service.responder(new RagChatService.Request(cohort, UUID.randomUUID(), List.of(b, a), pregunta, null),
+        UUID.randomUUID(), anotherActor());
+
+    assertThat(first.cached()).isFalse();
+    assertThat(second.cached()).isTrue();
+    assertThat(second.tokensGastados()).isZero();
+    verify(models, org.mockito.Mockito.times(1)).invoke(any(), anyString(), anyString(), any());
+  }
+
+  /** #679 — cambiar el conjunto de fuentes es otra entrada: la misma pregunta sobre otra fuente
+   * no puede responderse con el material de la primera. */
+  @Test
+  void theSameQuestionOverDifferentSourcesIsCachedSeparately() {
+    UUID a = UUID.randomUUID();
+    UUID b = UUID.randomUUID();
+    UUID cohort = UUID.randomUUID();
+    var models = answeringModel();
+    var service = cachingService(models, activeDocumentsRepository(cohort, a, b));
+    String pregunta = "¿qué es Docker y en qué se diferencia de una VM?";
+
+    service.responder(new RagChatService.Request(cohort, UUID.randomUUID(), List.of(a), pregunta, null),
+        UUID.randomUUID(), anotherActor());
+    var second = service.responder(new RagChatService.Request(cohort, UUID.randomUUID(), List.of(b), pregunta, null),
+        UUID.randomUUID(), anotherActor());
+
+    assertThat(second.cached()).isFalse();
+    verify(models, org.mockito.Mockito.times(2)).invoke(any(), anyString(), anyString(), any());
+  }
+
+  /** #679 + #672 — retirar una fuente invalida las entradas que la usaban, por construcción: la
+   * clave se arma con las fuentes AUTORIZADAS, así que al quedar retirada el docKey cambia y la
+   * respuesta vieja (que la citaba) ya no puede servirse. */
+  @Test
+  void aRetiredSourceIsNeverServedFromTheCache() {
+    UUID vigente = UUID.randomUUID();
+    UUID retirada = UUID.randomUUID();
+    UUID cohort = UUID.randomUUID();
+    var documents = activeDocumentsRepository(cohort, vigente, retirada);
+    var models = answeringModel();
+    var service = cachingService(models, documents);
+    String pregunta = "¿qué es Docker y en qué se diferencia de una VM?";
+    var seleccion = List.of(vigente, retirada);
+
+    var first = service.responder(new RagChatService.Request(cohort, UUID.randomUUID(), seleccion, pregunta, null),
+        UUID.randomUUID(), anotherActor());
+    assertThat(first.cached()).isFalse();
+
+    // El docente retira una de las dos fuentes: deja de estar entre las activas de la cohorte.
+    when(documents.findActiveByCourse(cohort)).thenReturn(List.of(activeDocument(cohort, vigente)));
+
+    var afterRetire = service.responder(new RagChatService.Request(cohort, UUID.randomUUID(), seleccion, pregunta, null),
+        UUID.randomUUID(), anotherActor());
+
+    assertThat(afterRetire.cached()).as("no se sirve la respuesta que citaba la fuente retirada").isFalse();
+    verify(models, org.mockito.Mockito.times(2)).invoke(any(), anyString(), anyString(), any());
+  }
+
+  private CallerIdentity anotherActor() {
+    // Alumno distinto en cada consulta: el cooldown anti-flood es por alumno y no es lo que se prueba acá.
+    return new CallerIdentity("practice-service", UUID.randomUUID(), "req-" + UUID.randomUUID(), null);
+  }
+
+  private RagDocument activeDocument(UUID cohort, UUID docId) {
+    return new RagDocument(docId, cohort, "material-" + docId + ".pdf", 1000, 10, 5, OffsetDateTime.now(), "preview", true);
+  }
+
+  private RagDocumentRepository activeDocumentsRepository(UUID cohort, UUID... docIds) {
+    var documents = mock(RagDocumentRepository.class);
+    List<RagDocument> docs = java.util.Arrays.stream(docIds).map(id -> activeDocument(cohort, id)).toList();
+    when(documents.findActiveByCourse(cohort)).thenReturn(docs);
+    docs.forEach(doc -> when(documents.findById(doc.id())).thenReturn(Optional.of(doc)));
+    return documents;
+  }
+
+  private ModelInvocationService answeringModel() {
+    var models = mock(ModelInvocationService.class);
+    when(models.invoke(eq(ModelFunction.TUTOR), anyString(), anyString(), any()))
+        .thenReturn(new ModelInvocationResult("Docker comparte el kernel del sistema anfitrión.", "fake", "fake-socratic-v1"));
+    return models;
+  }
+
+  private RagChatService cachingService(ModelInvocationService models, RagDocumentRepository documents) {
+    var conversations = mock(ConversationRepository.class);
+    when(conversations.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+    var messages = mock(MessageRepository.class);
+    when(messages.findByConversationId(any())).thenReturn(List.of());
+    var vectorStore = mock(VectorStorePort.class);
+    when(vectorStore.searchTopK(any(), any(), any(), org.mockito.ArgumentMatchers.anyInt())).thenReturn(List.of(
+        new DocumentChunk(UUID.randomUUID(), UUID.randomUUID(), "material.pdf", 4, 0, "Contenido relevante.", 0.92)));
+    var embeddings = mock(EmbeddingInvocationService.class);
+    when(embeddings.embed(anyString(), any())).thenReturn(new EmbeddingResult(new float[768], "fake", "fake-embedding-768"));
+    return buildServiceWithEmbeddings(models, embeddings, vectorStore, documents, conversations, messages);
+  }
+
   @Test
   void retryingWithTheSameIdempotencyKeyReplaysWithoutInvokingTheModelAgain() throws Exception {
     var models = mock(ModelInvocationService.class);

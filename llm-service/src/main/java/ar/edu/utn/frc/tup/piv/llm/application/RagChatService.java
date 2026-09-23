@@ -125,7 +125,12 @@ public class RagChatService {
       return sinFuente(request);
     }
 
-    String docKey = authorizedDocIds.stream().map(UUID::toString).sorted().collect(Collectors.joining(";"));
+    // Clave de caché (#679): cohorte + conjunto de fuentes AUTORIZADAS (ordenado y deduplicado, para
+    // que el mismo conjunto en otro orden pegue en el mismo slot). Que se arme con las autorizadas
+    // y no con las pedidas es lo que invalida el caché al retirar una fuente (#672): retirada, o la
+    // selección queda vacía (y se abstiene antes de llegar acá) o el docKey cambia y falla el hit.
+    String docKey = request.courseCohortId() + "|"
+        + authorizedDocIds.stream().map(UUID::toString).sorted().collect(Collectors.joining(";"));
 
     var validation = guardrail.validate(request.pregunta(), actor.delegatedUserId().toString());
     if (!validation.valid()) {
