@@ -150,7 +150,7 @@ public class RagChatService {
           "UNAVAILABLE", null, 0, false, DEFAULT_TUTOR_ROLE, List.of(), request.conversacionId());
     }
 
-    List<DocumentChunk> contextChunks = vectorStore.searchTopK(authorizedDocIds, queryEmbedding.vector(), CONTEXT_TOP_K);
+    List<DocumentChunk> contextChunks = vectorStore.searchTopK(request.courseCohortId(), authorizedDocIds, queryEmbedding.vector(), CONTEXT_TOP_K);
     List<DocumentChunk> citationChunks = contextChunks.subList(0, Math.min(CITATION_TOP_K, contextChunks.size()));
     List<SourceCitation> fuentes = citationChunks.stream().map(chunk -> new SourceCitation(
         chunk.documentId(), chunk.documentName() != null ? chunk.documentName() : "Documento",

@@ -44,7 +44,7 @@ class RagChatServiceTest {
 
     assertThat(response.estado()).isEqualTo("BLOCKED_NO_SOURCE");
     verify(models, never()).invoke(any(), anyString(), anyString(), any());
-    verify(vectorStore, never()).searchTopK(any(), any(), org.mockito.ArgumentMatchers.anyInt());
+    verify(vectorStore, never()).searchTopK(any(), any(), any(), org.mockito.ArgumentMatchers.anyInt());
   }
 
   @Test
@@ -58,6 +58,56 @@ class RagChatServiceTest {
     var response = service.responder(request, UUID.randomUUID(), actor);
 
     assertThat(response.estado()).isEqualTo("BLOCKED_NO_SOURCE");
+  }
+
+  /** #675 — el aislamiento por cohorte no queda en manos del llamador: la cohorte de la consulta
+   * viaja hasta la búsqueda, que la filtra a nivel query (ver `PgVectorStoreAdapter.searchTopK`). */
+  @Test
+  void theRequestCohortIsPushedDownToTheVectorSearch() {
+    UUID docId = UUID.randomUUID();
+    UUID cohort = UUID.randomUUID();
+    var documents = activeDocumentRepository(docId);
+    var conversations = mock(ConversationRepository.class);
+    when(conversations.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+    var messages = mock(MessageRepository.class);
+    when(messages.findByConversationId(any())).thenReturn(List.of());
+    var vectorStore = mock(VectorStorePort.class);
+    when(vectorStore.searchTopK(any(), any(), any(), org.mockito.ArgumentMatchers.anyInt())).thenReturn(List.of());
+    var embeddings = mock(EmbeddingInvocationService.class);
+    when(embeddings.embed(anyString(), any())).thenReturn(new EmbeddingResult(new float[768], "fake", "fake-embedding-768"));
+    var models = mock(ModelInvocationService.class);
+    when(models.invoke(eq(ModelFunction.TUTOR), anyString(), anyString(), any()))
+        .thenReturn(new ModelInvocationResult("respuesta", "fake", "fake-socratic-v1"));
+
+    var service = buildServiceWithEmbeddings(models, embeddings, vectorStore, documents, conversations, messages);
+    service.responder(new RagChatService.Request(cohort, UUID.randomUUID(), List.of(docId), "¿qué es Docker?", null),
+        UUID.randomUUID(), actor);
+
+    verify(vectorStore).searchTopK(eq(cohort), eq(List.of(docId)), any(), org.mockito.ArgumentMatchers.anyInt());
+  }
+
+  /** #675 — una fuente retirada (#672) no está entre las activas de la cohorte, así que no
+   * participa de la selección ni llega a la búsqueda: la consulta se abstiene. */
+  @Test
+  void aRetiredDocumentIsNeverAuthorizedNorSearched() {
+    UUID retiredId = UUID.randomUUID();
+    var documents = mock(RagDocumentRepository.class);
+    // findActiveByCourse ya filtra active = true: la fuente retirada no aparece.
+    when(documents.findActiveByCourse(any())).thenReturn(List.of());
+    when(documents.findById(retiredId)).thenReturn(Optional.of(
+        new RagDocument(retiredId, UUID.randomUUID(), "retirada.pdf", 1000, 10, 5, OffsetDateTime.now(), "preview", false)));
+    var vectorStore = mock(VectorStorePort.class);
+    var models = mock(ModelInvocationService.class);
+    var service = buildService(models, vectorStore, documents, mock(ConversationRepository.class), mock(MessageRepository.class));
+
+    var response = service.responder(
+        new RagChatService.Request(UUID.randomUUID(), UUID.randomUUID(), List.of(retiredId), "¿qué es Docker?", null),
+        UUID.randomUUID(), actor);
+
+    assertThat(response.estado()).isEqualTo("BLOCKED_NO_SOURCE");
+    assertThat(response.fuentes()).isEmpty();
+    verify(vectorStore, never()).searchTopK(any(), any(), any(), org.mockito.ArgumentMatchers.anyInt());
+    verify(models, never()).invoke(any(), anyString(), anyString(), any());
   }
 
   @Test
@@ -84,7 +134,7 @@ class RagChatServiceTest {
     var messages = mock(MessageRepository.class);
     when(messages.findByConversationId(any())).thenReturn(List.of());
     var vectorStore = mock(VectorStorePort.class);
-    when(vectorStore.searchTopK(eq(List.of(docId)), any(), org.mockito.ArgumentMatchers.anyInt())).thenReturn(List.of(
+    when(vectorStore.searchTopK(any(), eq(List.of(docId)), any(), org.mockito.ArgumentMatchers.anyInt())).thenReturn(List.of(
         new DocumentChunk(UUID.randomUUID(), docId, "Docker_UTN.pdf", 4, 0, "Contenido relevante sobre Docker.", 0.92)));
     var embeddings = mock(EmbeddingInvocationService.class);
     when(embeddings.embed(anyString(), any())).thenReturn(new EmbeddingResult(new float[768], "fake", "fake-embedding-768"));
@@ -113,7 +163,7 @@ class RagChatServiceTest {
     var messages = mock(MessageRepository.class);
     when(messages.findByConversationId(any())).thenReturn(List.of());
     var vectorStore = mock(VectorStorePort.class);
-    when(vectorStore.searchTopK(eq(List.of(docId)), any(), org.mockito.ArgumentMatchers.anyInt())).thenReturn(List.of(
+    when(vectorStore.searchTopK(any(), eq(List.of(docId)), any(), org.mockito.ArgumentMatchers.anyInt())).thenReturn(List.of(
         new DocumentChunk(UUID.randomUUID(), docId, "Docker_UTN.pdf", 4, 0, "Contenido relevante sobre Docker.", 0.92)));
     var embeddings = mock(EmbeddingInvocationService.class);
     when(embeddings.embed(anyString(), any())).thenReturn(new EmbeddingResult(new float[768], "fake", "fake-embedding-768"));

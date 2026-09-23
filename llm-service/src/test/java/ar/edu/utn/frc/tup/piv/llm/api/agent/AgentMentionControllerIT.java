@@ -373,7 +373,7 @@ class AgentMentionControllerIT {
     public void addChunk(DocumentChunk chunk, EmbeddingResult embedding) {}
 
     @Override
-    public List<DocumentChunk> searchTopK(List<UUID> documentIds, float[] queryVector, int topK) {
+    public List<DocumentChunk> searchTopK(UUID courseCohortId, List<UUID> documentIds, float[] queryVector, int topK) {
       List<DocumentChunk> matched = new ArrayList<>();
       for (List<DocumentChunk> list : chunksByCohort.values()) {
         for (DocumentChunk c : list) {

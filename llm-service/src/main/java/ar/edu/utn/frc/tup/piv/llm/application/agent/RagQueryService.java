@@ -82,7 +82,7 @@ public class RagQueryService {
 
     // 3. Búsqueda vectorial multi-documento en el espacio de la cohorte
     int k = topK > 0 ? topK : DEFAULT_TOP_K;
-    List<DocumentChunk> chunks = vectorStore.searchTopK(authorizedDocIds, queryVector, k);
+    List<DocumentChunk> chunks = vectorStore.searchTopK(cohortId, authorizedDocIds, queryVector, k);
     if (chunks == null || chunks.isEmpty()) {
       return List.of();
     }

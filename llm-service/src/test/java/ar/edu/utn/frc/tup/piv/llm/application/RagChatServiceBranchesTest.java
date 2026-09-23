@@ -109,7 +109,7 @@ class RagChatServiceBranchesTest {
   @Test
   void modelTimeoutYieldsUnavailableAnswerButStillPersistsBothMessages() {
     UUID id = UUID.randomUUID(); activeDocs(doc(id, "a.pdf"));
-    when(vectorStore.searchTopK(any(), any(), anyInt())).thenReturn(List.of());
+    when(vectorStore.searchTopK(any(), any(), any(), anyInt())).thenReturn(List.of());
     when(models.invoke(eq(ModelFunction.TUTOR), anyString(), anyString(), any())).thenThrow(new ModelTimeoutException("t"));
     var r = service.responder(req(List.of(id), null), UUID.randomUUID(), actor());
     assertThat(r.estado()).isEqualTo("UNAVAILABLE");
@@ -124,7 +124,7 @@ class RagChatServiceBranchesTest {
   @Test
   void invalidModelResponseYieldsUnavailable() {
     UUID id = UUID.randomUUID(); activeDocs(doc(id, "a.pdf"));
-    when(vectorStore.searchTopK(any(), any(), anyInt())).thenReturn(List.of());
+    when(vectorStore.searchTopK(any(), any(), any(), anyInt())).thenReturn(List.of());
     when(models.invoke(any(), anyString(), anyString(), any())).thenThrow(new InvalidModelResponseException("x"));
     assertThat(service.responder(req(List.of(id), null), UUID.randomUUID(), actor()).estado()).isEqualTo("UNAVAILABLE");
   }
@@ -133,7 +133,7 @@ class RagChatServiceBranchesTest {
   void multipleSourcesCreateAMultiSourceConversationAndDeduplicateIds() {
     UUID a = UUID.randomUUID(), b = UUID.randomUUID(), foreign = UUID.randomUUID();
     activeDocs(doc(a, "a.pdf"), doc(b, "b.pdf"));
-    when(vectorStore.searchTopK(any(), any(), anyInt())).thenReturn(List.of());
+    when(vectorStore.searchTopK(any(), any(), any(), anyInt())).thenReturn(List.of());
     when(models.invoke(any(), anyString(), anyString(), any())).thenReturn(new ModelInvocationResult("ok", "p", "m"));
 
     var r = service.responder(req(List.of(a, b, a, foreign), null), UUID.randomUUID(), actor());
@@ -144,14 +144,14 @@ class RagChatServiceBranchesTest {
     verify(conversations).save(conv.capture());
     assertThat(conv.getValue().titulo()).isEqualTo("Tutoría Multi-Fuente (2 fuentes)");
     ArgumentCaptor<List<UUID>> searched = ArgumentCaptor.forClass(List.class);
-    verify(vectorStore).searchTopK(searched.capture(), any(), eq(8));
+    verify(vectorStore).searchTopK(eq(cohort), searched.capture(), any(), eq(8));
     assertThat(searched.getValue()).containsExactly(a, b);
   }
 
   @Test
   void singleSourceConversationIsTitledWithTheFileName() {
     UUID a = UUID.randomUUID(); activeDocs(doc(a, "docker.pdf"));
-    when(vectorStore.searchTopK(any(), any(), anyInt())).thenReturn(List.of());
+    when(vectorStore.searchTopK(any(), any(), any(), anyInt())).thenReturn(List.of());
     when(models.invoke(any(), anyString(), anyString(), any())).thenReturn(new ModelInvocationResult("ok", "p", "m"));
     service.responder(req(List.of(a), null), UUID.randomUUID(), actor());
     ArgumentCaptor<Conversation> conv = ArgumentCaptor.forClass(Conversation.class);
@@ -165,7 +165,7 @@ class RagChatServiceBranchesTest {
     var d = new RagDocument(a, cohort, "x.pdf", 1, 1, 1, OffsetDateTime.now(), "p", true);
     activeDocs(d);
     when(documents.findById(a)).thenReturn(Optional.empty());
-    when(vectorStore.searchTopK(any(), any(), anyInt())).thenReturn(List.of());
+    when(vectorStore.searchTopK(any(), any(), any(), anyInt())).thenReturn(List.of());
     when(models.invoke(any(), anyString(), anyString(), any())).thenReturn(new ModelInvocationResult("ok", "p", "m"));
     service.responder(req(List.of(a), null), UUID.randomUUID(), actor());
     ArgumentCaptor<Conversation> conv = ArgumentCaptor.forClass(Conversation.class);
@@ -183,7 +183,7 @@ class RagChatServiceBranchesTest {
     for (int i = 0; i < 6; i++) hist.add(Message.de(convId, i % 2 == 0 ? Message.ROL_ALUMNO : Message.ROL_TUTOR, "mensaje-" + i));
     when(messages.findByConversationId(convId)).thenReturn(hist);
     String longContent = "z".repeat(300);
-    when(vectorStore.searchTopK(any(), any(), anyInt())).thenReturn(List.of(
+    when(vectorStore.searchTopK(any(), any(), any(), anyInt())).thenReturn(List.of(
         new DocumentChunk(UUID.randomUUID(), a, null, 3, 1, longContent, 0.5)));
     when(models.invoke(any(), anyString(), anyString(), any())).thenReturn(new ModelInvocationResult("resp", "p", "m"));
 
@@ -205,7 +205,7 @@ class RagChatServiceBranchesTest {
     UUID a = UUID.randomUUID(); activeDocs(doc(a, "a.pdf"));
     UUID missing = UUID.randomUUID();
     when(conversations.findById(missing)).thenReturn(Optional.empty());
-    when(vectorStore.searchTopK(any(), any(), anyInt())).thenReturn(List.of());
+    when(vectorStore.searchTopK(any(), any(), any(), anyInt())).thenReturn(List.of());
     when(models.invoke(any(), anyString(), anyString(), any())).thenReturn(new ModelInvocationResult("ok", "p", "m"));
     var r = service.responder(req(List.of(a), missing), UUID.randomUUID(), actor());
     verify(conversations).save(any());
@@ -217,7 +217,7 @@ class RagChatServiceBranchesTest {
     UUID a = UUID.randomUUID(); activeDocs(doc(a, "a.pdf"));
     List<DocumentChunk> chunks = new ArrayList<>();
     for (int i = 0; i < 6; i++) chunks.add(new DocumentChunk(UUID.randomUUID(), a, "a.pdf", i + 1, i, "contenido" + i, 0.9 - i * 0.1));
-    when(vectorStore.searchTopK(any(), any(), anyInt())).thenReturn(chunks);
+    when(vectorStore.searchTopK(any(), any(), any(), anyInt())).thenReturn(chunks);
     when(models.invoke(any(), anyString(), anyString(), any())).thenReturn(new ModelInvocationResult("resp", "p", "m"));
     var r = service.responder(req(List.of(a), null), UUID.randomUUID(), actor());
     assertThat(r.fuentes()).hasSize(4);
@@ -230,7 +230,7 @@ class RagChatServiceBranchesTest {
   @Test
   void nullChunkContentIsCitedAsEmptyExcerpt() {
     UUID a = UUID.randomUUID(); activeDocs(doc(a, "a.pdf"));
-    when(vectorStore.searchTopK(any(), any(), anyInt())).thenReturn(List.of(
+    when(vectorStore.searchTopK(any(), any(), any(), anyInt())).thenReturn(List.of(
         new DocumentChunk(UUID.randomUUID(), a, "a.pdf", 1, 0, null, 0.1)));
     when(models.invoke(any(), anyString(), anyString(), any())).thenReturn(new ModelInvocationResult("resp", "p", "m"));
     var r = service.responder(req(List.of(a), null), UUID.randomUUID(), actor());

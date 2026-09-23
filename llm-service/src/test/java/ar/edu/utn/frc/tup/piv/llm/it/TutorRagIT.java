@@ -142,7 +142,7 @@ class TutorRagIT extends AbstractIntegrationIT {
     assertThat(body(mvc.perform(cohortTeacher(practice(get("/api/llm/rag/documents")), cohort).param("courseCohortId", cohort.toString()))
         .andExpect(status().isOk())).size()).isZero();
     assertThat(ragQuery.queryCohortContext(cohort, "requerimientos del producto", 3)).isEmpty();
-    assertThat(vectorStore.searchTopK(java.util.List.of(docId), embeddings.embed("requerimientos del producto", java.time.Duration.ofSeconds(8)).vector(), 3))
+    assertThat(vectorStore.searchTopK(cohort, java.util.List.of(docId), embeddings.embed("requerimientos del producto", java.time.Duration.ofSeconds(8)).vector(), 3))
         .as("el filtro por active se aplica en la query, no después del top-K").isEmpty();
     var afterRetire = body(mvc.perform(practice(post("/api/llm/rag/chat")).header("Idempotency-Key", UUID.randomUUID().toString())
         .content("{\"courseCohortId\":\"" + cohort + "\",\"learnerId\":\"" + learner + "\",\"documentIds\":[\"" + docId

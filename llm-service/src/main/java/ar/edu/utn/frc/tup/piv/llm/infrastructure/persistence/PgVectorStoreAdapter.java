@@ -53,24 +53,25 @@ public class PgVectorStoreAdapter implements VectorStorePort {
   }
 
   @Override
-  public List<DocumentChunk> searchTopK(List<UUID> documentIds, float[] queryVector, int topK) {
-    if (documentIds == null || documentIds.isEmpty() || queryVector == null) {
+  public List<DocumentChunk> searchTopK(UUID courseCohortId, List<UUID> documentIds, float[] queryVector, int topK) {
+    if (courseCohortId == null || documentIds == null || documentIds.isEmpty() || queryVector == null) {
       return Collections.emptyList();
     }
 
     PGvector pgQueryVector = new PGvector(queryVector);
     String inSql = String.join(",", Collections.nCopies(documentIds.size(), "?"));
     // El operador <=> queda en el esquema `llm` (la extensión se crea allí), fuera del search_path por defecto.
-    // El join con rag_documents.active se aplica dentro de la query (antes del ORDER BY/LIMIT): una
-    // fuente retirada no ocupa lugares del top-K aunque el llamador la haya pedido por id (#672).
+    // Cohorte (#675) y retiro lógico (#672) se filtran en el join, antes del ORDER BY/LIMIT: una
+    // fuente ajena o retirada no ocupa lugares del top-K aunque el llamador la haya pedido por id.
     String sql = "select c.id, c.document_id, c.document_name, c.page_number, c.chunk_index, c.content, "
         + "(1 - (c.embedding OPERATOR(llm.<=>) ?)) as similarity from llm.rag_chunks c "
-        + "join llm.rag_documents d on d.id = c.document_id and d.active = true "
+        + "join llm.rag_documents d on d.id = c.document_id and d.active = true and d.course_cohort_id = ? "
         + "where c.document_id in (" + inSql + ") and c.embedding is not null "
         + "order by c.embedding OPERATOR(llm.<=>) ? limit ?";
 
     List<Object> params = new ArrayList<>();
     params.add(pgQueryVector);
+    params.add(courseCohortId);
     params.addAll(documentIds);
     params.add(pgQueryVector);
     params.add(topK);

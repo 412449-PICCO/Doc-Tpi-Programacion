@@ -17,9 +17,12 @@ public interface VectorStorePort {
   /** Agrega un chunk individual (ej. un diagrama decodificado) sin tocar los demás. */
   void addChunk(DocumentChunk chunk, EmbeddingResult embedding);
 
-  /** Búsqueda semántica cruzada multi-documento, filtrando estrictamente por `documentIds`
-   * (partición por curso/cohorte: el llamador ya resolvió qué documentos están autorizados). */
-  List<DocumentChunk> searchTopK(List<UUID> documentIds, float[] queryVector, int topK);
+  /** Búsqueda semántica cruzada multi-documento. El aislamiento por cohorte (`AGENTS.md` §2) y el
+   * retiro lógico (`active`) se resuelven **dentro de la consulta**, no filtrando en memoria: se
+   * devuelven solo chunks de documentos activos de `courseCohortId` que además estén en
+   * `documentIds`. Que el llamador ya haya validado la selección no exime a la base de filtrar —
+   * es defensa en profundidad: un llamador equivocado no puede recuperar material ajeno. */
+  List<DocumentChunk> searchTopK(UUID courseCohortId, List<UUID> documentIds, float[] queryVector, int topK);
 
   List<DocumentChunk> getChunks(UUID documentId);
 
