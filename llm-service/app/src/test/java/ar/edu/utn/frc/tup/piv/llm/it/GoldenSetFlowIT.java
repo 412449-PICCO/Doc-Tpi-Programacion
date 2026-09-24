@@ -72,7 +72,7 @@ class GoldenSetFlowIT extends AbstractIntegrationIT {
         .header("X-Service-Scopes", "otro.scope").header("X-Delegated-User", TEACHER.toString())).andExpect(status().isUnauthorized());
     mvc.perform(get(base)).andExpect(status().isUnauthorized());
     mvc.perform(asTeacher(get(base), UUID.randomUUID())).andExpect(status().isForbidden());
-    mvc.perform(asTeacher(get(base + "/" + UUID.randomUUID()), course)).andExpect(status().isConflict());
+    mvc.perform(asTeacher(get(base + "/" + UUID.randomUUID()), course)).andExpect(status().isNotFound());
     mvc.perform(post(base).header("X-Principal-Type", "service").header("X-Service-Id", "admin-service")
         .header("X-Service-Scopes", "llm.golden-set.manage").header("X-Delegated-User", "no-uuid").contentType("application/json").content("{}")).andExpect(status().isForbidden());
     mvc.perform(post(base).header("X-Principal-Type", "service").header("X-Service-Id", "admin-service")

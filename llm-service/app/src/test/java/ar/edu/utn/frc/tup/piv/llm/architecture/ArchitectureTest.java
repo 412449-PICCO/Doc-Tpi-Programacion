@@ -26,7 +26,7 @@ import org.junit.jupiter.api.Test;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 
 /**
- * Hace cumplir ADR-019 y reglas estrictas de Clean Architecture / DDD:
+ * Hace cumplir ADR-001/ADR-003 (docs/00-gobierno-y-evolucion/adr) y reglas estrictas de Clean Architecture / DDD:
  * - domain es el núcleo: no depende de Spring, Kafka, JDBC/JPA, SDKs de modelos, infrastructure, application ni api.
  * - application no depende de la capa de presentación (api).
  * - adapter.in.web no depende directamente de adapter.out.persistence (orquestado vía application).
@@ -88,6 +88,14 @@ class ArchitectureTest {
   }
 
   @Test
+  void domainDoesNotDependOnAdapters() {
+    ArchRule rule = noClasses()
+        .that().resideInAPackage("..domain..")
+        .should().dependOnClassesThat().resideInAPackage("..adapter..");
+    rule.check(classes);
+  }
+
+  @Test
   void domainDoesNotDependOnApplication() {
     ArchRule rule = noClasses()
         .that().resideInAPackage("..domain..")
@@ -113,7 +121,7 @@ class ArchitectureTest {
 
   @Test
   void webAdapterDoesNotDependOnPersistenceAdapter() {
-    // ADR-019: deuda conocida. Tras la integración main↔dev (2026-09-21) estos diez controllers
+    // ADR-003 §3: deuda conocida. Tras la integración main↔dev (2026-09-21) estos diez controllers
     // siguen tomando tipos de `adapter.out.persistence` (records anidados de los repositories) en
     // vez de pasar por `application`. La lista solo puede achicarse: no agregar controllers acá.
     ArchRule rule = noClasses()
@@ -121,7 +129,7 @@ class ArchitectureTest {
         .and().haveNameNotMatching(".*(ProviderCredentialController|InstitutionalCalibrationController"
             + "|CalibrationActivationController|CalibrationRunController|CourseEvaluationStatusController"
             + "|CourseGoldenSetController|GoldenSetImportController|GoldenSetUpdateProposalController"
-            + "|ModelAssignmentController|ModelDeploymentController).*")
+            + "|ModelAssignmentController|ModelDeploymentController|EvaluatorSkillsController).*")
         .should().dependOnClassesThat().resideInAnyPackage("..adapter.out.persistence..");
     rule.check(classes);
   }

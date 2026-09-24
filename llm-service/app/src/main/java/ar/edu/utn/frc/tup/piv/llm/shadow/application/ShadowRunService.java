@@ -1,5 +1,7 @@
 package ar.edu.utn.frc.tup.piv.llm.shadow.application;
 
+import ar.edu.utn.frc.tup.piv.llm.application.exception.ResourceNotFoundException;
+
 import ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.AuditRepository;
 import ar.edu.utn.frc.tup.piv.llm.application.model.CallerIdentity;
 import ar.edu.utn.frc.tup.piv.llm.shadow.domain.ShadowRun;
@@ -55,11 +57,11 @@ public class ShadowRunService {
       throw new IllegalArgumentException("La rúbrica candidata es la misma que la activa del curso");
     }
     if (!store.rubricVersionVisibleToCourse(courseId, command.candidateRubricVersionId())) {
-      throw new IllegalStateException("La rúbrica candidata no existe en el curso");
+      throw new ResourceNotFoundException("La rúbrica candidata no existe en el curso");
     }
     if (command.source() == ShadowRun.Source.GOLDEN_SET
         && !store.goldenSetVersionVisibleToCourse(courseId, command.goldenSetVersionId())) {
-      throw new IllegalStateException("El golden set no existe en el curso");
+      throw new ResourceNotFoundException("El golden set no existe en el curso");
     }
     var run = store.create(new ShadowRunStore.NewRun(courseId, baseline, command.candidateRubricVersionId(),
         command.source(), command.goldenSetVersionId(), size, threshold, idempotencyKey, actor.delegatedUserId()));
@@ -72,7 +74,7 @@ public class ShadowRunService {
   @Transactional(readOnly = true)
   public ShadowRun get(UUID courseId, UUID runId) {
     return store.find(courseId, runId)
-        .orElseThrow(() -> new IllegalStateException("La corrida de shadow no existe en el curso"));
+        .orElseThrow(() -> new ResourceNotFoundException("La corrida de shadow no existe en el curso"));
   }
 
   @Transactional(readOnly = true)

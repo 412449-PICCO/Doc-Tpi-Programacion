@@ -244,7 +244,7 @@ export class BadEditorComponent {
    - `application`: Casos de uso y orquestación (`application/service`, `application/port/out`, `application/worker`).
    - `adapter`: Entradas Web/mensajería (`adapter/in/**`) y salidas HTTP, persistencia JDBC, mensajería y proveedores (`adapter/out/**`).
    - Lenguaje ubicuo: toda regla que comprometa invariantes del agregado se define en `domain` (ej. "una Fuente se persiste antes que sus chunks"). Los nombres `*Port`/`*Adapter` son contratos de aplicación / implementaciones de adaptador.
-   - El árbol vigente está en [`docsV2/02-arquitectura-y-plataforma/04-estructura-del-backend.md`](docsV2/02-arquitectura-y-plataforma/04-estructura-del-backend.md); `llm-service/src` ya no existe, todo vive en el módulo `app` y los `provider-*`.
+   - El árbol vigente está en [`docs/02-arquitectura-y-plataforma/04-estructura-del-backend.md`](docs/02-arquitectura-y-plataforma/04-estructura-del-backend.md); `llm-service/src` ya no existe, todo vive en el módulo `app` y los `provider-*`.
 
 #### Ejemplo Backend (Java 21):
 

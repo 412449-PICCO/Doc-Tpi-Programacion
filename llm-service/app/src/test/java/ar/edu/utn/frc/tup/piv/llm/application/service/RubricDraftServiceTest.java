@@ -49,6 +49,50 @@ class RubricDraftServiceTest {
     assertThat(service.createFromTemplate(course, template, "  Evaluación de depuración  ", actor).name()).isEqualTo("Evaluación de depuración");
     verify(repository).createDraftFromPublishedTemplate(course, template, "Evaluación de depuración", actor.delegatedUserId());
   }
+
+  @Test void autosaveModularAdvancesRevisionAndReplacesCustomDimensions() {
+    var repository = mock(RubricVersionRepository.class); var service = new RubricDraftService(repository);
+    UUID course = UUID.randomUUID(), version = UUID.randomUUID(), family = UUID.randomUUID();
+    var customDims = List.of(
+        new RubricDraftService.DimensionCustomInput("ALGO", "Algoritmos", "Evalúa algoritmos", anchors(), BigDecimal.valueOf(50)),
+        new RubricDraftService.DimensionCustomInput("CODE", "Calidad", "Evalúa código", anchors(), BigDecimal.valueOf(50)));
+    var customInput = new RubricDraftService.RubricCustomInput("Rúbrica Modular", "Mensaje orientador docente", "MODULAR_CUSTOM", customDims);
+
+    when(repository.advanceRevision(course, version, 1)).thenReturn(true);
+    var saved = new RubricVersion(version, family, 1, "Rúbrica Modular", "DRAFT", 2, null,
+        "Mensaje orientador docente", "MODULAR_CUSTOM", List.of(), customDims);
+    when(repository.find(course, version)).thenReturn(java.util.Optional.of(saved));
+
+    var result = service.autosaveModular(course, version, 1, customInput, new CallerIdentity("gateway", UUID.randomUUID(), null, null));
+    assertThat(result.revision()).isEqualTo(2);
+    assertThat(result.rubricKind()).isEqualTo("MODULAR_CUSTOM");
+    assertThat(result.userPrompt()).isEqualTo("Mensaje orientador docente");
+
+    verify(repository).advanceRevision(course, version, 1);
+    verify(repository).updateVersionName(course, version, "Rúbrica Modular");
+    verify(repository).updateUserPrompt(course, version, "Mensaje orientador docente");
+    verify(repository).updateRubricKind(course, version, "MODULAR_CUSTOM");
+    verify(repository).replaceCustomDimensions(version, customDims);
+  }
+
+  @Test void autosaveModularRejectsInvalidDimensions() {
+    var repository = mock(RubricVersionRepository.class); var service = new RubricDraftService(repository);
+    UUID course = UUID.randomUUID(), version = UUID.randomUUID();
+
+    var emptyDims = new RubricDraftService.RubricCustomInput("Nombre", "prompt", "MODULAR_CUSTOM", List.of());
+    assertThatThrownBy(() -> service.autosaveModular(course, version, 1, emptyDims, new CallerIdentity("gateway", UUID.randomUUID(), null, null)))
+        .isInstanceOf(IllegalArgumentException.class).hasMessage("El borrador modular debe incluir al menos una dimensión");
+
+    var blankKey = new RubricDraftService.RubricCustomInput("Nombre", "prompt", "MODULAR_CUSTOM", List.of(
+        new RubricDraftService.DimensionCustomInput("   ", "label", "crit", anchors(), BigDecimal.valueOf(100))));
+    assertThatThrownBy(() -> service.autosaveModular(course, version, 1, blankKey, new CallerIdentity("gateway", UUID.randomUUID(), null, null)))
+        .isInstanceOf(IllegalArgumentException.class).hasMessage("Cada dimensión debe tener una clave identificadora válida");
+
+    var zeroWeight = new RubricDraftService.RubricCustomInput("Nombre", "prompt", "MODULAR_CUSTOM", List.of(
+        new RubricDraftService.DimensionCustomInput("key", "label", "crit", anchors(), BigDecimal.ZERO)));
+    assertThatThrownBy(() -> service.autosaveModular(course, version, 1, zeroWeight, new CallerIdentity("gateway", UUID.randomUUID(), null, null)))
+        .isInstanceOf(IllegalArgumentException.class).hasMessage("El peso de cada dimensión debe ser mayor a 0 y menor o igual a 100");
+  }
   private RubricInput input() {
     return new RubricInput("Rúbrica", List.of(
         dimension(Dimension.AUTONOMY), dimension(Dimension.CLARITY), dimension(Dimension.PROGRESSION), dimension(Dimension.COMPLIANCE), dimension(Dimension.EFFICIENCY)));

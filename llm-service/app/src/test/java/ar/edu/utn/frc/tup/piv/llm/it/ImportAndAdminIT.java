@@ -81,12 +81,15 @@ class ImportAndAdminIT extends AbstractIntegrationIT {
     UUID c = UUID.randomUUID();
     // El perfil institucional es global; se parte de un estado conocido para que el caso sea determinista.
     jdbc.update("delete from llm.institutional_calibration_profiles");
-    mvc.perform(asTeacher(get("/api/llm/admin/institutional-calibration/profile"), c)).andExpect(status().isConflict());
-    mvc.perform(asTeacher(post("/api/llm/admin/institutional-calibration/profile"), c)
+    // Las rutas institucionales exigen rol ADMIN + scope llm.institutional-calibration.manage:
+    // la identidad correcta es asAdmin (con asTeacher nunca se llega a la regla de negocio).
+    mvc.perform(asAdmin(get("/api/llm/admin/institutional-calibration/profile"))).andExpect(status().isConflict());
+    mvc.perform(asAdmin(post("/api/llm/admin/institutional-calibration/profile"))
         .content("{\"goldenSetVersionId\":\"" + draft(c) + "\",\"rubricVersionId\":\"10000000-0000-0000-0000-000000000002\"}"))
         .andExpect(status().isConflict());
-    mvc.perform(asTeacher(get("/api/llm/admin/institutional-calibration/runs"), c)).andExpect(status().isOk());
-    mvc.perform(asTeacher(post("/api/llm/admin/institutional-calibration/runs"), c)).andExpect(status().isConflict());
+    mvc.perform(asAdmin(get("/api/llm/admin/institutional-calibration/runs"))).andExpect(status().isOk());
+    mvc.perform(asAdmin(post("/api/llm/admin/institutional-calibration/runs"))
+        .header("Idempotency-Key", UUID.randomUUID().toString())).andExpect(status().isConflict());
   }
 
   @Test

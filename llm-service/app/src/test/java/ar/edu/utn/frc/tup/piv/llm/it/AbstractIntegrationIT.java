@@ -80,6 +80,19 @@ public abstract class AbstractIntegrationIT {
         .contentType(org.springframework.http.MediaType.APPLICATION_JSON);
   }
 
+  /** Identidad de administrador institucional. */
+  protected static org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder asAdmin(
+      org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder request) {
+    return request
+        .header("X-Principal-Type", "service")
+        .header("X-Service-Id", "admin-service")
+        .header("X-Service-Scopes", "llm.institutional-calibration.manage")
+        .header("X-Delegated-User", TEACHER.toString())
+        .header("X-Actor-Id", TEACHER.toString())
+        .header("X-User-Roles", "ADMIN")
+        .contentType(org.springframework.http.MediaType.APPLICATION_JSON);
+  }
+
   protected com.fasterxml.jackson.databind.JsonNode body(org.springframework.test.web.servlet.ResultActions result) throws Exception {
     return json.readTree(result.andReturn().getResponse().getContentAsString());
   }

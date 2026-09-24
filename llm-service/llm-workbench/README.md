@@ -110,7 +110,7 @@ plataforma — es, igual que el resto de `llm-workbench`, un banco de pruebas.
 
 - **Sin proveedor real de IA:** tanto la respuesta del tutor como los embeddings de búsqueda son
   simulados (`FakeModelAdapter`/`FakeEmbeddingAdapter`, ver
-  [`docs/estado-implementacion/ep-09/`](../docs/estado-implementacion/ep-09/README.md)) — la
+  [`docs/estado-implementacion/ep-09/`](../docs/06-operacion-calidad-y-pruebas/04-estado-de-implementacion/ep-09/README.md)) — la
   calidad de la respuesta no refleja un proveedor real todavía.
 - **`learnerId` de prueba:** no hay identidad real de alumno en el workbench; se genera un UUID
   estable por pestaña del navegador (`sessionStorage`, clave

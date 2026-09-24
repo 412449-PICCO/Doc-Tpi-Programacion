@@ -16,7 +16,9 @@ public final class OutputAntiLeakGuard {
       + "antes de que revisemos más detalles?";
 
   private static final Pattern CODE_BLOCK_PATTERN = Pattern.compile("```[a-zA-Z]*\\n[\\s\\S]*?```");
-  private static final Pattern INLINE_CODE_PATTERN = Pattern.compile("`[^`]{2,}`");
+  // Inline snippets are single-line; a fenced block within MAX_CODE_LINES is allowed by the
+  // block check above and must not be re-flagged by the inline matcher.
+  private static final Pattern INLINE_CODE_PATTERN = Pattern.compile("`[^`\n]{2,}`");
   private static final Pattern CODE_LINE_PATTERN = Pattern.compile(
       "(?m)^\\s*(?:public|private|protected|class|interface|record|def|function|fn|let|const|var|if|for|while|return|import|package)\\b|[{};]\\s*$");
   private static final int MAX_CODE_LINES = 8;
@@ -39,7 +41,7 @@ public final class OutputAntiLeakGuard {
   /**
    * Heurística de forma de código (bloques largos, snippets inline, líneas con forma de código).
    * Solo se aplica en `high`/`medium`: en `low` sobre-bloquea respuestas legítimas, según la adenda
-   * SSE y {@code docsV2/.../ep-05/interactions.md}.
+   * SSE y {@code docs/.../ep-05/interactions.md}.
    */
   public boolean looksLikeCode(String response) {
     if (response == null || response.isBlank()) return false;

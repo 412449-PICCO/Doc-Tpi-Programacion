@@ -16,6 +16,20 @@ class ApiExceptionHandlerTest {
   @Test void mapsValidationAndIdempotencyConflictsToExpectedProblemStatuses() {
     assertThat(handler.invalid(new IllegalArgumentException("inválido"), request).getStatus()).isEqualTo(422);
     assertThat(handler.conflict(new IllegalStateException("en curso"), request).getStatus()).isEqualTo(409);
+    var skillProblem = handler.unknownSkillKey(new EvaluatorSkillsController.UnknownSkillKeyException("unknown"), request);
+    assertThat(skillProblem.getStatus()).isEqualTo(422);
+    assertThat(skillProblem.getProperties()).containsEntry("code", "UNKNOWN_SKILL_KEY");
+  }
+
+  @Test void mapsResourceNotFoundTo404AndKeepsConflictFor409() {
+    request.addHeader("X-Request-Id", "req-test-404");
+    ProblemDetail problem = handler.notFound(
+        new ar.edu.utn.frc.tup.piv.llm.application.exception.ResourceNotFoundException("El Golden Set no existe"), request);
+
+    assertThat(problem.getStatus()).isEqualTo(404);
+    assertThat(problem.getDetail()).isEqualTo("El Golden Set no existe");
+    assertThat(problem.getProperties()).containsEntry("error", "not_found").containsEntry("requestId", "req-test-404");
+    assertThat(handler.conflict(new IllegalStateException("La versión ya está publicada"), request).getStatus()).isEqualTo(409);
   }
 
   @Test void mapsResponseStatusExceptionToProblemDetailWithStatusDetailAndRequestId() {

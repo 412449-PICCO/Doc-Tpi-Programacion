@@ -35,6 +35,12 @@ public class ApiExceptionHandler {
   ProblemDetail goldenSetSize(GoldenSetSizeException exception, HttpServletRequest request) {
     return problem(HttpStatus.CONFLICT, exception.getMessage(), request);
   }
+  @ExceptionHandler(ar.edu.utn.frc.tup.piv.llm.application.service.CalibrationRunService.IncompleteGoldenSetException.class)
+  ProblemDetail incompleteGoldenSet(ar.edu.utn.frc.tup.piv.llm.application.service.CalibrationRunService.IncompleteGoldenSetException exception, HttpServletRequest request) {
+    ProblemDetail p = problem(HttpStatus.BAD_REQUEST, exception.getMessage(), request);
+    p.setProperty("error", "validation_error");
+    return p;
+  }
   @ExceptionHandler(ar.edu.utn.frc.tup.piv.llm.moderation.application.exception.AppealAlreadyExistsException.class)
   ProblemDetail appealAlreadyExists(ar.edu.utn.frc.tup.piv.llm.moderation.application.exception.AppealAlreadyExistsException exception, HttpServletRequest request) {
     ProblemDetail p = problem(HttpStatus.CONFLICT, "appeal_already_exists", request);
@@ -94,14 +100,26 @@ public class ApiExceptionHandler {
   }
   @ExceptionHandler(org.springframework.web.bind.MethodArgumentNotValidException.class)
   ProblemDetail validationException(org.springframework.web.bind.MethodArgumentNotValidException exception, HttpServletRequest request) {
-    ProblemDetail p = problem(HttpStatus.BAD_REQUEST, "Los datos enviados no son válidos o contienen campos obligatorios ausentes.", request);
+    ProblemDetail p = problem(HttpStatus.BAD_REQUEST, "Los datos enviados no son vǭlidos o contienen campos obligatorios ausentes.", request);
     p.setProperty("error", "validation_error");
+    return p;
+  }
+  @ExceptionHandler(EvaluatorSkillsController.UnknownSkillKeyException.class)
+  ProblemDetail unknownSkillKey(EvaluatorSkillsController.UnknownSkillKeyException exception, HttpServletRequest request) {
+    ProblemDetail p = problem(HttpStatus.UNPROCESSABLE_ENTITY, exception.getMessage(), request);
+    p.setProperty("code", "UNKNOWN_SKILL_KEY");
     return p;
   }
   @ExceptionHandler(IllegalArgumentException.class)
   ProblemDetail invalid(IllegalArgumentException exception, HttpServletRequest request) { return problem(HttpStatus.UNPROCESSABLE_ENTITY, exception.getMessage(), request); }
   @ExceptionHandler(OptimisticLockException.class)
   ProblemDetail staleDraft(OptimisticLockException exception, HttpServletRequest request) { return problem(HttpStatus.CONFLICT, exception.getMessage(), request); }
+  @ExceptionHandler(ar.edu.utn.frc.tup.piv.llm.application.exception.ResourceNotFoundException.class)
+  ProblemDetail notFound(ar.edu.utn.frc.tup.piv.llm.application.exception.ResourceNotFoundException exception, HttpServletRequest request) {
+    ProblemDetail p = problem(HttpStatus.NOT_FOUND, exception.getMessage(), request);
+    p.setProperty("error", "not_found");
+    return p;
+  }
   @ExceptionHandler(IllegalStateException.class)
   ProblemDetail conflict(IllegalStateException exception, HttpServletRequest request) { return problem(HttpStatus.CONFLICT, exception.getMessage(), request); }
   @ExceptionHandler(DataIntegrityViolationException.class)

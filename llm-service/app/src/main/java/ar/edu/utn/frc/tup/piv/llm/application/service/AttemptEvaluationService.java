@@ -26,7 +26,7 @@ import org.springframework.stereotype.Service;
  * o `SCORE_DEFERRED` si no se pudo evaluar. Contra el adaptador `fake` funciona sin proveedor real.
  *
  * <p><b># fixture provisorio</b> — el payload de ambos eventos es una propuesta nuestra, todavía sin
- * validar con Tema 05 (ver `docsV2/.../tema-05-desafios-practicos/pendientes.md`). Tampoco hay
+ * validar con Tema 05 (ver `docs/.../tema-05-desafios-practicos/pendientes.md`). Tampoco hay
  * forma de saber a qué curso pertenece una cohorte, así que la rúbrica sale de la configuración
  * (`llm.evaluation.rubric-version-id`), no de la calibración activa del curso.
  *

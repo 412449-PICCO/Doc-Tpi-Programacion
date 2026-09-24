@@ -1,5 +1,7 @@
 package ar.edu.utn.frc.tup.piv.llm.application.service;
 
+import ar.edu.utn.frc.tup.piv.llm.application.exception.ResourceNotFoundException;
+
 import ar.edu.utn.frc.tup.piv.llm.domain.RubricValidator;
 import ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.RubricVersionRepository;
 import ar.edu.utn.frc.tup.piv.llm.application.model.CallerIdentity;
@@ -19,7 +21,7 @@ public class RubricTemplateService {
 
   @Transactional(readOnly = true)
   public RubricDraftService.RubricVersion get(UUID id) { return rubrics.findTemplate(id)
-      .orElseThrow(() -> new IllegalStateException("La plantilla no existe")); }
+      .orElseThrow(() -> new ResourceNotFoundException("La plantilla no existe")); }
 
   @Transactional
   public RubricDraftService.RubricVersion create(RubricDraftService.RubricInput input, CallerIdentity actor) {

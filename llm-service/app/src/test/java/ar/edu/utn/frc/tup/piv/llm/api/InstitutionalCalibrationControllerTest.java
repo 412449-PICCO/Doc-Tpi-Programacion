@@ -30,7 +30,7 @@ class InstitutionalCalibrationControllerTest {
   private final UUID actor = UUID.randomUUID();
 
   InstitutionalCalibrationControllerTest() {
-    when(auth.require(any())).thenReturn(new CallerIdentity("svc", actor, "req", null));
+    when(auth.requireInstitutionalManager(any())).thenReturn(new CallerIdentity("svc", actor, "req", null));
   }
 
   @Test
@@ -48,38 +48,57 @@ class InstitutionalCalibrationControllerTest {
   }
 
   @Test
-  void configureDelegatesWithActor() {
-    UUID g = UUID.randomUUID(), r = UUID.randomUUID();
-    controller.configure(new InstitutionalCalibrationController.ProfileRequest(g, r), headers);
-    verify(runs).profile(g, r, actor);
+  void configureSavesProfile() {
+    var req = new InstitutionalCalibrationController.ProfileRequest(UUID.randomUUID(), UUID.randomUUID());
+    controller.configure(req, headers);
+    verify(runs).profile(req.goldenSetVersionId(), req.rubricVersionId(), actor);
   }
 
   @Test
-  void listWrapsPlatformRuns() {
-    var run = new CalibrationRunRepository.Run(UUID.randomUUID(), "QUEUED", 0);
+  void listReturnsPlatformRuns() {
+    var run = new CalibrationRunRepository.Run(UUID.randomUUID(), "PASSED", 0);
     when(runs.listPlatform()).thenReturn(List.of(run));
     assertThat(controller.list(headers).items()).containsExactly(run);
   }
 
   @Test
-  void createRequiresProfileAndTarget() {
-    when(runs.profile()).thenReturn(Optional.empty());
-    assertThatThrownBy(() -> controller.create(headers)).hasMessageContaining("Configure el perfil");
-    when(runs.profile()).thenReturn(Optional.of(new CalibrationRunRepository.Profile(UUID.randomUUID(), UUID.randomUUID(), Instant.now())));
-    when(deployments.calibrationTarget()).thenReturn(Optional.empty());
-    assertThatThrownBy(() -> controller.create(headers)).hasMessageContaining("modelo candidato");
+  void createSavesPlatformRun() {
+    var p = new CalibrationRunRepository.Profile(UUID.randomUUID(), UUID.randomUUID(), Instant.now());
+    when(runs.profile()).thenReturn(Optional.of(p));
+    var d = new ProviderCredentialRepository.Deployment(UUID.randomUUID(), UUID.randomUUID(), "openai", "gpt", "gpt-4", "ACTIVE", Instant.now(), 1, Instant.now(), java.util.Map.of());
+    when(deployments.calibrationTarget()).thenReturn(Optional.of(d));
+    var run = new CalibrationRunRepository.Run(UUID.randomUUID(), "QUEUED", 0);
+    UUID key = UUID.randomUUID();
+    when(runs.createPlatform(p.rubricVersionId(), p.goldenSetVersionId(), d.id(), key, actor)).thenReturn(run);
+    
+    var res = controller.create(headers, key);
+    assertThat(res.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+    assertThat(res.getBody()).isSameAs(run);
   }
 
   @Test
-  void createReturnsAcceptedWithNewRun() {
-    var profile = new CalibrationRunRepository.Profile(UUID.randomUUID(), UUID.randomUUID(), Instant.now());
-    var target = new ProviderCredentialRepository.Deployment(UUID.randomUUID(), UUID.randomUUID(), "openai-compatible", "c", "m", "ACTIVE", Instant.now(), null, null, java.util.Map.of());
-    var run = new CalibrationRunRepository.Run(UUID.randomUUID(), "QUEUED", 0);
-    when(runs.profile()).thenReturn(Optional.of(profile));
-    when(deployments.calibrationTarget()).thenReturn(Optional.of(target));
-    when(runs.createPlatform(profile.rubricVersionId(), profile.goldenSetVersionId(), target.id(), actor)).thenReturn(run);
-    var response = controller.create(headers);
-    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
-    assertThat(response.getBody()).isSameAs(run);
+  void createFailsWithoutProfile() {
+    when(runs.profile()).thenReturn(Optional.empty());
+    assertThatThrownBy(() -> controller.create(headers, UUID.randomUUID())).isInstanceOf(IllegalStateException.class);
+  }
+
+  @Test
+  void createFailsWithoutTarget() {
+    var p = new CalibrationRunRepository.Profile(UUID.randomUUID(), UUID.randomUUID(), Instant.now());
+    when(runs.profile()).thenReturn(Optional.of(p));
+    when(deployments.calibrationTarget()).thenReturn(Optional.empty());
+    assertThatThrownBy(() -> controller.create(headers, UUID.randomUUID())).isInstanceOf(IllegalStateException.class);
+  }
+
+  @Test
+  void getReturnsRunDetail() {
+    UUID runId = UUID.randomUUID();
+    var run = new CalibrationRunRepository.Run(runId, null, "PLATFORM", "PASSED", 100, UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), null, null, null, null, null, null, null, null);
+    when(runs.byId(runId)).thenReturn(Optional.of(run));
+    var errors = java.util.Map.of(ar.edu.utn.frc.tup.piv.llm.domain.CalibrationMetrics.Dimension.AUTONOMY, java.math.BigDecimal.TEN);
+    when(runs.dimensionErrors(runId)).thenReturn(errors);
+    var detail = controller.get(runId, headers);
+    assertThat(detail.run()).isSameAs(run);
+    assertThat(detail.dimensionErrors()).isEqualTo(errors);
   }
 }

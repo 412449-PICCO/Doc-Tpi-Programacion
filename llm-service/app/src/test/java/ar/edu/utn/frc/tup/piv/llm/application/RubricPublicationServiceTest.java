@@ -6,6 +6,7 @@ import ar.edu.utn.frc.tup.piv.llm.application.service.RubricDraftService;
 import ar.edu.utn.frc.tup.piv.llm.application.service.RubricPublicationService;
 
 import ar.edu.utn.frc.tup.piv.llm.domain.CalibrationMetrics.Dimension;
+import ar.edu.utn.frc.tup.piv.llm.domain.RubricValidator;
 import ar.edu.utn.frc.tup.piv.llm.domain.RubricValidator.DimensionDefinition;
 import ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.AuditRepository;
 import ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.RubricVersionRepository;
@@ -81,7 +82,68 @@ class RubricPublicationServiceTest {
         new RubricDraftService.DimensionInput(Dimension.PROGRESSION, "Progresión", "Criterio", anchors, BigDecimal.valueOf(20)),
         new RubricDraftService.DimensionInput(Dimension.COMPLIANCE, "Cumplimiento", "Criterio", anchors, BigDecimal.valueOf(15)),
         new RubricDraftService.DimensionInput(Dimension.EFFICIENCY, "Eficiencia", "Criterio", anchors, BigDecimal.valueOf(10)));
-    return new RubricDraftService.RubricVersion(versionId, UUID.randomUUID(), 1, "Rúbrica", "DRAFT", 1, null, dimensions);
+    return new RubricDraftService.RubricVersion(versionId, UUID.randomUUID(), 1, "Rúbrica", "DRAFT", 1, null, "", "DEFAULT_INSTITUTIONAL", dimensions, List.of());
+  }
+
+  @Test void publishesModularRubricWhenValidAndWeightsTotalOneHundred() {
+    UUID courseId = UUID.randomUUID(); UUID versionId = UUID.randomUUID();
+    CallerIdentity actor = new CallerIdentity("admin-service", UUID.randomUUID(), "request", null);
+    var customDims = List.of(
+        new RubricValidator.DimensionCustomDefinition("ALGO", BigDecimal.valueOf(50)),
+        new RubricValidator.DimensionCustomDefinition("CODE", BigDecimal.valueOf(50)));
+    when(rubrics.dimensionsOfDraft(courseId, versionId)).thenReturn(List.of());
+    when(rubrics.customDimensionsOfDraft(courseId, versionId)).thenReturn(customDims);
+    var version = new RubricDraftService.RubricVersion(versionId, courseId, 1, "Modular", "DRAFT", 1L, null,
+        "prompt", "MODULAR_CUSTOM", List.of(), List.of(
+            new RubricDraftService.DimensionCustomInput("ALGO", "Algoritmos", "criterio", validAnchors(), BigDecimal.valueOf(50)),
+            new RubricDraftService.DimensionCustomInput("CODE", "Código", "criterio", validAnchors(), BigDecimal.valueOf(50))));
+    when(rubrics.find(courseId, versionId)).thenReturn(java.util.Optional.of(version));
+    when(rubrics.publishDraft(courseId, versionId)).thenReturn(true);
+
+    new RubricPublicationService(rubrics, audit, mock(CalibrationExpirationService.class)).publish(courseId, versionId, actor);
+
+    verify(rubrics).publishDraft(courseId, versionId);
+    verify(audit).record(eq("rubric.published"), eq("rubric-version"), eq(versionId), eq(actor), anyString());
+  }
+
+  @Test void doesNotPublishModularRubricWhenWeightsDoNotTotalOneHundred() {
+    UUID courseId = UUID.randomUUID(); UUID versionId = UUID.randomUUID();
+    var customDims = List.of(
+        new RubricValidator.DimensionCustomDefinition("ALGO", BigDecimal.valueOf(50)),
+        new RubricValidator.DimensionCustomDefinition("CODE", BigDecimal.valueOf(45)));
+    when(rubrics.dimensionsOfDraft(courseId, versionId)).thenReturn(List.of());
+    when(rubrics.customDimensionsOfDraft(courseId, versionId)).thenReturn(customDims);
+
+    assertThatThrownBy(() -> new RubricPublicationService(rubrics, audit, mock(CalibrationExpirationService.class)).publish(courseId, versionId,
+        new CallerIdentity("admin-service", UUID.randomUUID(), null, null)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("El puntaje total de la r\u00FAbrica debe sumar exactamente 100 puntos");
+
+    verify(rubrics, never()).publishDraft(courseId, versionId);
+  }
+
+  @Test void doesNotPublishWhenModularAnchorsAreNotIncreasing() {
+    UUID courseId = UUID.randomUUID(); UUID versionId = UUID.randomUUID();
+    var customDims = List.of(
+        new RubricValidator.DimensionCustomDefinition("ALGO", BigDecimal.valueOf(100)));
+    when(rubrics.dimensionsOfDraft(courseId, versionId)).thenReturn(List.of());
+    when(rubrics.customDimensionsOfDraft(courseId, versionId)).thenReturn(customDims);
+
+    var invalidAnchors = new RubricDraftService.Anchors(
+        new RubricDraftService.Anchor("bajo", 60, "ejemplo bajo"),
+        new RubricDraftService.Anchor("medio", 40, "ejemplo medio"), // No creciente: 60 > 40
+        new RubricDraftService.Anchor("alto", 90, "ejemplo alto"));
+    var version = new RubricDraftService.RubricVersion(versionId, courseId, 1, "Modular", "DRAFT", 1L, null,
+        "prompt", "MODULAR_CUSTOM", List.of(), List.of(
+            new RubricDraftService.DimensionCustomInput("ALGO", "Algoritmos", "criterio", invalidAnchors, BigDecimal.valueOf(100))));
+    when(rubrics.find(courseId, versionId)).thenReturn(java.util.Optional.of(version));
+
+    assertThatThrownBy(() -> new RubricPublicationService(rubrics, audit, mock(CalibrationExpirationService.class)).publish(courseId, versionId,
+        new CallerIdentity("admin-service", UUID.randomUUID(), null, null)))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("Los puntajes de ancla deben ser crecientes: bajo, medio y alto");
+
+    verify(rubrics, never()).publishDraft(courseId, versionId);
   }
 
   private List<DimensionDefinition> validDimensions() {
@@ -91,5 +153,12 @@ class RubricPublicationServiceTest {
 
   private DimensionDefinition dimension(Dimension key, int weight) {
     return new DimensionDefinition(key, BigDecimal.valueOf(weight));
+  }
+
+  private RubricDraftService.Anchors validAnchors() {
+    return new RubricDraftService.Anchors(
+        new RubricDraftService.Anchor("bajo", 20, "ejemplo bajo"),
+        new RubricDraftService.Anchor("medio", 50, "ejemplo medio"),
+        new RubricDraftService.Anchor("alto", 85, "ejemplo alto"));
   }
 }
