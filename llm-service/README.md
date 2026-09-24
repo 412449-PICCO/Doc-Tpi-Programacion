@@ -67,6 +67,16 @@ docker compose -f compose.yaml -f compose.workbench.yaml up --build   # + fronte
 docker compose down                    # apagar (agregar los mismos -f si se combinaron overlays)
 ```
 
+Una vez que los tres servicios estén en pie, verificar que el backend responde:
+
+```bash
+# Requiere el overlay debug (compose.debug.yaml) para exponer el puerto al host,
+# o ejecutar desde dentro de la red Docker:
+curl -s http://localhost:8087/actuator/health | grep -q UP && echo "UP" || echo "DOWN"
+```
+
+Con el perfil `workbench` el gateway-mock expone el puerto; con el perfil `local` el puerto de management (8087) solo está accesible dentro de la red Docker o con el overlay `debug`.
+
 Levanta tres servicios *healthy*: `postgres`, `kafka-local` (broker local para probar sin la
 plataforma) y `llm-service`. `compose.yaml` fija `container_name: llm-service` (el nombre del
 servicio, igual que en Eureka): si ya existe un contenedor con ese nombre de otro proyecto,

@@ -66,8 +66,10 @@ class FlywaySchemaTest {
 
   /**
    * H04·CA2/T7: crear la base desde cero dos veces deja exactamente el mismo esquema y las mismas
-   * migraciones (versión + checksum). La cadena vigente es V1–V23 y V26–V38: el hueco V24/V25 es
-   * intencional (eran las de Kafka de `main`, descartadas en la integración del 2026-09-21).
+   * migraciones (versión + checksum). La cadena vigente es V1–V39 + V41 + V42: el hueco V40 es
+   * intencional. El hueco anterior V24/V25 fue absorbido al incorporar esas migraciones en la
+   * integración del 2026-09-21; V40 quedó libre tras el reordenamiento del 2026-09-23.
+   * Verificada en verde el 2026-09-23 con pgvector/pgvector:pg16.
    */
   @Test void fullMigrationChainIsReproducibleFromScratchAndKeepsTheIntentionalGap() throws Exception {
     String first = migrateFromScratchAndFingerprint();
