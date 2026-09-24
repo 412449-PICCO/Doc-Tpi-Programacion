@@ -48,11 +48,13 @@ class TutorRagIT extends AbstractIntegrationIT {
   void tutorConversationKeepsTheHistory() throws Exception {
     UUID cohort = UUID.randomUUID();
     UUID learner = UUID.randomUUID();
-    String convId = body(mvc.perform(practice(post("/api/llm/tutor/conversations"))
+    // EP05-H02/H03: el usuario delegado tiene que ser el dueno de la conversacion. Crear o listar
+    // conversaciones de otro alumno responde 403 ("No puede crear conversaciones para otro alumno").
+    String convId = body(mvc.perform(practiceAs(learner, post("/api/llm/tutor/conversations"))
         .header("Idempotency-Key", UUID.randomUUID().toString())
         .content("{\"courseCohortId\":\"" + cohort + "\",\"learnerId\":\"" + learner + "\",\"challengeId\":\""
             + UUID.randomUUID() + "\",\"titulo\":\"Duda\"}")).andExpect(status().isCreated())).path("id").asText();
-    assertThat(body(mvc.perform(practice(get("/api/llm/tutor/conversations")).param("learnerId", learner.toString()))
+    assertThat(body(mvc.perform(practiceAs(learner, get("/api/llm/tutor/conversations")).param("learnerId", learner.toString()))
         .andExpect(status().isOk())).size()).isEqualTo(1);
 
     String interaction = "{\"attemptId\":\"" + UUID.randomUUID() + "\",\"challengeId\":\"" + UUID.randomUUID()
@@ -66,7 +68,7 @@ class TutorRagIT extends AbstractIntegrationIT {
     var replay = body(mvc.perform(practice(post("/api/llm/tutor/interactions")).header("Idempotency-Key", key).content(interaction))
         .andExpect(status().isOk()));
     assertThat(replay.path("message").asText()).isEqualTo(first.path("message").asText());
-    assertThat(body(mvc.perform(practice(get("/api/llm/tutor/conversations/" + convId + "/messages")))
+    assertThat(body(mvc.perform(practiceAs(learner, get("/api/llm/tutor/conversations/" + convId + "/messages")))
         .andExpect(status().isOk())).size()).isGreaterThanOrEqualTo(2);
   }
 
@@ -171,7 +173,7 @@ class TutorRagIT extends AbstractIntegrationIT {
     assertThat(jdbc.queryForObject("select count(*) from llm.rag_chunks where document_id = ?", Integer.class, docId))
         .isEqualTo(chunkCount);
     // La conversacion historica que cito la fuente sigue siendo consultable.
-    assertThat(body(mvc.perform(practice(get("/api/llm/tutor/conversations/" + conversationId + "/messages")))
+    assertThat(body(mvc.perform(practiceAs(learner, get("/api/llm/tutor/conversations/" + conversationId + "/messages")))
         .andExpect(status().isOk())).size()).isGreaterThanOrEqualTo(2);
 
     // Idempotente: retirarla de nuevo no es error. Inexistente -> 404.
