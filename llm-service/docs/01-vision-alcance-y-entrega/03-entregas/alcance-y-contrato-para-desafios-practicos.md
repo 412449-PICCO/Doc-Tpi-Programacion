@@ -111,11 +111,15 @@ Content-Type: application/json
   "courseCohortId": "uuid",
   "learnerId": "uuid",
   "message": "texto del alumno",
-  "riskLevel": "high | medium | low"
+  "riskLevel": "high | medium | low",
+  "conversacionId": "uuid (opcional)",
+  "expectedSolution": "string (opcional, ver §5.2)"
 }
 ```
 
-Todos los campos son obligatorios. `courseCohortId` y `learnerId` los deriva el Gateway de la
+Los seis primeros campos son obligatorios. `conversacionId` agrupa los turnos de una misma conversación:
+si no lo mandan, creamos una y la devolvemos en la respuesta; reenvíenla en los turnos siguientes.
+`expectedSolution` es opcional: solo se usa en memoria para el guardarraíl anti-fuga y nunca se guarda. `courseCohortId` y `learnerId` los deriva el Gateway de la
 identidad de la llamada — igual los piden explícitos en el body porque el contrato HTTP actual no
 los saca del token, así que **mándenlos siempre coherentes con la sesión del alumno**, no un valor
 arbitrario del cliente.
@@ -125,7 +129,8 @@ arbitrario del cliente.
 ```json
 {
   "message": "respuesta socrática del tutor",
-  "state": "completed | blocked | unavailable"
+  "state": "completed | blocked | unavailable",
+  "conversacionId": "uuid"
 }
 ```
 
@@ -139,9 +144,15 @@ arbitrario del cliente.
 
 | HTTP | Cuándo |
 |---|---|
-| `403` | Autorización funcional — por ejemplo scope insuficiente |
-| `429` | Cuota agotada |
-| `503` | Proveedor del modelo no disponible |
+| `400` | Falta el header `Idempotency-Key` o el cuerpo no es JSON válido |
+| `401` | Servicio o scope incorrecto (falta `llm.tutor.interact`) |
+| `403` | Identidad delegada ausente o inválida |
+| `409` | Misma `Idempotency-Key` con la solicitud original todavía en curso — reintentar en unos segundos |
+| `422` | Cuerpo inválido (campo obligatorio ausente, `riskLevel` fuera de high/medium/low) o `Idempotency-Key` reusada con otro payload |
+
+No hay `429` ni `503` en este endpoint: cualquier falla del modelo (timeout, proveedor caído, presupuesto
+agotado) responde `200` con `state: unavailable`. Timeout de la llamada: hasta 25 s en el peor caso, así
+que configuren 30 s de su lado.
 
 ### 4.2 `riskLevel`: por qué lo necesitamos exacto
 

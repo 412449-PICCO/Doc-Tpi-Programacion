@@ -11,8 +11,8 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/** `POST /api/llm/tutor/interactions` — `docs/contracts/llm-service-v1.openapi.yaml`
- * (`TutorInteractionRequest`/`Response`). Cierra el hueco que
+/** `POST /api/llm/tutor/interactions` — `docs/contracts/llm-service.openapi.yaml`
+ * (`TutorInteractionInput`/`TutorInteractionResponse`). Cierra el hueco que
  * `llm-service/CORRECCIONES-SUGERIDAS.md` ítem 14 señalaba: EP-05 no tenía ningún controller
  * todavía. La variante SSE (`/interactions/stream`) no está implementada — ver
  * `llm-service-v1-tutor-sse-adenda.md` ("hasta entonces el contrato ejecutable es solo el

@@ -60,14 +60,24 @@ class FlywaySchemaTest {
         statement.executeUpdate("insert into llm.active_calibrations (course_id, calibration_run_id, activated_by_user_id) values ('" + courseId + "', '" + firstRunId + "', '" + actorId + "')");
         assertThatThrownBy(() -> statement.executeUpdate("insert into llm.active_calibrations (course_id, calibration_run_id, activated_by_user_id) values ('" + courseId + "', '" + secondRunId + "', '" + actorId + "')"))
             .isInstanceOf(SQLException.class);
+
+        // H02 / T7: Verificación de persistencia real de conversations y messages
+        UUID convId = UUID.randomUUID();
+        statement.executeUpdate("insert into llm.conversations (id, course_cohort_id, learner_id, titulo, estado) values ('" + convId + "', '" + courseId + "', '" + actorId + "', 'Conversación test', 'ABIERTA')");
+        UUID msgId = UUID.randomUUID();
+        statement.executeUpdate("insert into llm.messages (id, conversation_id, rol, contenido) values ('" + msgId + "', '" + convId + "', 'alumno', 'Duda sobre colecciones')");
+        assertThatThrownBy(() -> statement.executeUpdate("insert into llm.messages (id, conversation_id, rol, contenido) values ('" + UUID.randomUUID() + "', '" + convId + "', 'invalido', 'Test')"))
+            .isInstanceOf(SQLException.class);
       }
     }
   }
 
   /**
    * H04·CA2/T7: crear la base desde cero dos veces deja exactamente el mismo esquema y las mismas
-   * migraciones (versión + checksum). La cadena vigente es V1–V23 y V26–V38: el hueco V24/V25 es
-   * intencional (eran las de Kafka de `main`, descartadas en la integración del 2026-09-21).
+   * migraciones (versión + checksum). La cadena vigente es V1–V39 + V41 + V42: el hueco V40 es
+   * intencional. El hueco anterior V24/V25 fue absorbido al incorporar esas migraciones en la
+   * integración del 2026-09-21; V40 quedó libre tras el reordenamiento del 2026-09-23.
+   * Verificada en verde el 2026-09-23 con pgvector/pgvector:pg16.
    */
   @Test void fullMigrationChainIsReproducibleFromScratchAndKeepsTheIntentionalGap() throws Exception {
     String first = migrateFromScratchAndFingerprint();

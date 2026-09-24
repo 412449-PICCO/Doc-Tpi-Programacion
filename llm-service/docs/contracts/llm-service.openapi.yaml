@@ -443,10 +443,62 @@ paths:
   /tutor/interactions:
     post:
       summary: Invoke the protected tutor from practice-service
+      description: |
+        Requiere scope `llm.tutor.interact` (M2M, `aud=llm-service`) e identidad delegada. Cualquier fallo del
+        modelo (timeout, proveedor caído, presupuesto agotado, función sin modelo) responde `200` con
+        `state: unavailable`; no hay 429 ni 503 en este endpoint. Un mismo `Idempotency-Key` con el mismo
+        payload devuelve la respuesta original.
       operationId: createTutorInteraction
       parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/TutorInteractionInput'}}}}
-      responses: {'200': {$ref: '#/components/responses/ApiObject'}, '400': {$ref: '#/components/responses/Problem'}, '403': {$ref: '#/components/responses/Problem'}, '503': {$ref: '#/components/responses/Problem'}}
+      responses:
+        '200': { description: Respuesta del tutor, content: { application/json: { schema: { $ref: '#/components/schemas/TutorInteractionResponse' } } } }
+        '400': { description: Falta el header Idempotency-Key o el cuerpo no es JSON válido, content: { application/problem+json: { schema: { type: object } } } }
+        '401': { description: Servicio o scope incorrecto, content: { application/problem+json: { schema: { type: object } } } }
+        '403': { description: Identidad delegada ausente o inválida, content: { application/problem+json: { schema: { type: object } } } }
+        '409': { description: Misma Idempotency-Key con la solicitud original todavía en curso, content: { application/problem+json: { schema: { type: object } } } }
+        '422': { description: Cuerpo inválido (campo obligatorio ausente, riskLevel fuera de high/medium/low) o Idempotency-Key reusada con otro payload, content: { application/problem+json: { schema: { type: object } } } }
+  /tutor/conversations:
+    get:
+      summary: List tutor conversations for a learner
+      operationId: listTutorConversations
+      parameters:
+        - { name: learnerId, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: courseCohortId, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: challengeId, in: query, required: false, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Conversaciones del alumno, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Conversation' } } } } }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+    post:
+      summary: Create a tutor conversation
+      operationId: createTutorConversation
+      parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CreateConversationRequest' } } } }
+      responses:
+        '201': { description: Conversación creada, content: { application/json: { schema: { $ref: '#/components/schemas/Conversation' } } } }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+  /tutor/conversations/{conversationId}/messages:
+    get:
+      summary: List messages of a conversation
+      operationId: listTutorConversationMessages
+      parameters:
+        - { name: conversationId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Mensajes de la conversación, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Message' } } } } }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
+    post:
+      summary: Append a message to a conversation
+      operationId: appendTutorConversationMessage
+      parameters:
+        - { name: conversationId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AppendMessageRequest' } } } }
+      responses:
+        '201': { description: Mensaje agregado, content: { application/json: { schema: { $ref: '#/components/schemas/Message' } } } }
+        '401': { $ref: '#/components/responses/Problem' }
+        '403': { $ref: '#/components/responses/Problem' }
   /courses/{courseId}/shadow-runs:
     get:
       tags: [Administration]
@@ -729,7 +781,47 @@ components:
         learnerId: {type: string, format: uuid}
         message: {type: string, minLength: 1}
         riskLevel: {type: string, enum: [high, medium, low]}
-        expectedSolution: {type: string, writeOnly: true, description: Only practice-service may send this field over M2M.}
+        conversacionId: {type: string, format: uuid, description: Opcional. Agrupa turnos de una misma conversación; si se omite el servicio crea una y la devuelve en la respuesta.}
+        expectedSolution: {type: string, writeOnly: true, description: Opcional. Only practice-service may send this field over M2M. Se usa solo en memoria para el guardarraíl anti-fuga; nunca se persiste, audita ni devuelve.}
+    TutorInteractionResponse:
+      type: object
+      required: [message, state, conversacionId]
+      properties:
+        message: {type: string}
+        state: {type: string, enum: [completed, blocked, unavailable], description: "blocked: el guardarraíl anti-fuga descartó la respuesta; unavailable: el modelo no pudo responder (degradación, no error del alumno)."}
+        conversacionId: {type: string, format: uuid}
+    CreateConversationRequest:
+      type: object
+      required: [courseCohortId, challengeId, titulo]
+      properties:
+        courseCohortId: {type: string, format: uuid}
+        learnerId: {type: string, format: uuid, description: Opcional; si se omite, usa la identidad delegada.}
+        challengeId: {type: string, format: uuid}
+        titulo: {type: string, minLength: 1}
+    AppendMessageRequest:
+      type: object
+      required: [contenido]
+      properties:
+        contenido: {type: string, minLength: 1}
+    Conversation:
+      type: object
+      required: [id, courseCohortId, learnerId, challengeId, titulo]
+      properties:
+        id: {type: string, format: uuid}
+        courseCohortId: {type: string, format: uuid}
+        learnerId: {type: string, format: uuid}
+        challengeId: {type: string, format: uuid}
+        titulo: {type: string}
+        createdAt: {type: string, format: date-time}
+    Message:
+      type: object
+      required: [id, conversationId, role, content]
+      properties:
+        id: {type: string, format: uuid}
+        conversationId: {type: string, format: uuid}
+        role: {type: string, enum: [STUDENT, TUTOR]}
+        content: {type: string, minLength: 1}
+        createdAt: {type: string, format: date-time}
     CreateShadowRunRequest:
       type: object
       required: [candidateRubricVersionId, source]
