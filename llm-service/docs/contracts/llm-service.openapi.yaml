@@ -395,10 +395,21 @@ paths:
   /tutor/interactions:
     post:
       summary: Invoke the protected tutor from practice-service
+      description: |
+        Requiere scope `llm.tutor.interact` (M2M, `aud=llm-service`) e identidad delegada. Cualquier fallo del
+        modelo (timeout, proveedor caído, presupuesto agotado, función sin modelo) responde `200` con
+        `state: unavailable`; no hay 429 ni 503 en este endpoint. Un mismo `Idempotency-Key` con el mismo
+        payload devuelve la respuesta original.
       operationId: createTutorInteraction
       parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/TutorInteractionInput'}}}}
-      responses: {'200': {$ref: '#/components/responses/ApiObject'}, '400': {$ref: '#/components/responses/Problem'}, '403': {$ref: '#/components/responses/Problem'}, '503': {$ref: '#/components/responses/Problem'}}
+      responses:
+        '200': { description: Respuesta del tutor, content: { application/json: { schema: { $ref: '#/components/schemas/TutorInteractionResponse' } } } }
+        '400': { description: Falta el header Idempotency-Key o el cuerpo no es JSON válido, content: { application/problem+json: { schema: { type: object } } } }
+        '401': { description: Servicio o scope incorrecto, content: { application/problem+json: { schema: { type: object } } } }
+        '403': { description: Identidad delegada ausente o inválida, content: { application/problem+json: { schema: { type: object } } } }
+        '409': { description: Misma Idempotency-Key con la solicitud original todavía en curso, content: { application/problem+json: { schema: { type: object } } } }
+        '422': { description: Cuerpo inválido (campo obligatorio ausente, riskLevel fuera de high/medium/low) o Idempotency-Key reusada con otro payload, content: { application/problem+json: { schema: { type: object } } } }
   /courses/{courseId}/shadow-runs:
     get:
       tags: [Administration]
@@ -631,7 +642,15 @@ components:
         learnerId: {type: string, format: uuid}
         message: {type: string, minLength: 1}
         riskLevel: {type: string, enum: [high, medium, low]}
-        expectedSolution: {type: string, writeOnly: true, description: Only practice-service may send this field over M2M.}
+        conversacionId: {type: string, format: uuid, description: Opcional. Agrupa turnos de una misma conversación; si se omite el servicio crea una y la devuelve en la respuesta.}
+        expectedSolution: {type: string, writeOnly: true, description: Opcional. Only practice-service may send this field over M2M. Se usa solo en memoria para el guardarraíl anti-fuga; nunca se persiste, audita ni devuelve.}
+    TutorInteractionResponse:
+      type: object
+      required: [message, state, conversacionId]
+      properties:
+        message: {type: string}
+        state: {type: string, enum: [completed, blocked, unavailable], description: "blocked: el guardarraíl anti-fuga descartó la respuesta; unavailable: el modelo no pudo responder (degradación, no error del alumno)."}
+        conversacionId: {type: string, format: uuid}
     CreateShadowRunRequest:
       type: object
       required: [candidateRubricVersionId, source]
