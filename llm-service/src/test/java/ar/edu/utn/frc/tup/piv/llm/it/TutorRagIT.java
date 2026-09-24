@@ -28,10 +28,18 @@ class TutorRagIT extends AbstractIntegrationIT {
   }
 
   static MockHttpServletRequestBuilder practice(MockHttpServletRequestBuilder b) {
+    return practiceAs(b, TEACHER);
+  }
+
+  /** Igual que {@link #practice} pero con un usuario delegado propio. `RagQueryGuardrail` es un
+   * bean singleton del contexto y su cooldown anti-flood va por usuario, así que dos consultas de
+   * chat seguidas con el mismo usuario delegado —aunque sean de tests distintos— se bloquean con
+   * `BLOCKED_RATE_LIMIT`. Cada consulta usa su propio alumno, que además es lo realista. */
+  static MockHttpServletRequestBuilder practiceAs(MockHttpServletRequestBuilder b, UUID delegatedUser) {
     return b.header("X-Principal-Type", "service")
         .header("X-Service-Id", "practice-service")
         .header("X-Service-Scopes", "llm.tutor.interact llm.rag.query")
-        .header("X-Delegated-User", TEACHER.toString())
+        .header("X-Delegated-User", delegatedUser.toString())
         .contentType("application/json");
   }
 
@@ -93,7 +101,7 @@ class TutorRagIT extends AbstractIntegrationIT {
     mvc.perform(practice(post("/api/llm/rag/documents/" + docId + "/diagrams")).content(decoded.toString()))
         .andExpect(status().isCreated());
 
-    var answer = body(mvc.perform(practice(post("/api/llm/rag/chat")).header("Idempotency-Key", UUID.randomUUID().toString())
+    var answer = body(mvc.perform(practiceAs(post("/api/llm/rag/chat"), learner).header("Idempotency-Key", UUID.randomUUID().toString())
         .content("{\"courseCohortId\":\"" + cohort + "\",\"learnerId\":\"" + learner + "\",\"documentIds\":[\"" + docId
             + "\"],\"pregunta\":\"¿De qué trata el documento?\"}")).andExpect(status().isOk()));
     assertThat(answer.path("estado").asText()).isEqualTo("OK");
@@ -123,13 +131,23 @@ class TutorRagIT extends AbstractIntegrationIT {
     int chunkCount = doc.path("chunkCount").asInt();
 
     // Dado: la fuente fue usada en una consulta previa (queda una conversación que la cita).
-    Thread.sleep(1300); // RagQueryGuardrail: cooldown de 1,2 s por usuario, compartido con el otro test de chat.
-    var answer = body(mvc.perform(practice(post("/api/llm/rag/chat")).header("Idempotency-Key", UUID.randomUUID().toString())
+    var answer = body(mvc.perform(practiceAs(post("/api/llm/rag/chat"), learner).header("Idempotency-Key", UUID.randomUUID().toString())
         .content("{\"courseCohortId\":\"" + cohort + "\",\"learnerId\":\"" + learner + "\",\"documentIds\":[\"" + docId
             + "\"],\"pregunta\":\"¿De qué trata el documento?\"}")).andExpect(status().isOk()));
     assertThat(answer.path("estado").asText()).isEqualTo("OK");
+    assertThat(answer.path("fuentes")).as("la consulta previa citó fragmentos de la fuente").isNotEmpty();
     String conversationId = answer.path("conversacionId").asText();
-    assertThat(ragQuery.queryCohortContext(cohort, "requerimientos del producto", 3)).isNotEmpty();
+
+    // La búsqueda vectorial encuentra la fuente mientras está activa. Se asierta sobre searchTopK y
+    // no sobre queryCohortContext porque ese aplica además un umbral de similitud (0.30) que los
+    // embeddings simulados no superan: sin esta línea, los `isEmpty()` de más abajo darían verde
+    // aunque el JOIN nuevo estuviera roto y la búsqueda no devolviera nada nunca.
+    float[] consulta = embeddings.embed("requerimientos del producto", java.time.Duration.ofSeconds(8)).vector();
+    assertThat(vectorStore.searchTopK(cohort, java.util.List.of(docId), consulta, 3))
+        .as("la fuente activa sí es recuperable por la búsqueda vectorial").isNotEmpty();
+    // Y la cohorte se filtra en la query: la misma búsqueda desde otra cohorte no devuelve nada.
+    assertThat(vectorStore.searchTopK(UUID.randomUUID(), java.util.List.of(docId), consulta, 3))
+        .as("aislamiento por cohorte a nivel consulta (#675)").isEmpty();
 
     // Cuando: un docente de OTRA cohorte intenta retirarla → 404 (como si no existiera), y sigue activa.
     mvc.perform(cohortTeacher(practice(delete("/api/llm/rag/documents/" + docId)), UUID.randomUUID())).andExpect(status().isNotFound());
@@ -142,9 +160,9 @@ class TutorRagIT extends AbstractIntegrationIT {
     assertThat(body(mvc.perform(cohortTeacher(practice(get("/api/llm/rag/documents")), cohort).param("courseCohortId", cohort.toString()))
         .andExpect(status().isOk())).size()).isZero();
     assertThat(ragQuery.queryCohortContext(cohort, "requerimientos del producto", 3)).isEmpty();
-    assertThat(vectorStore.searchTopK(cohort, java.util.List.of(docId), embeddings.embed("requerimientos del producto", java.time.Duration.ofSeconds(8)).vector(), 3))
+    assertThat(vectorStore.searchTopK(cohort, java.util.List.of(docId), consulta, 3))
         .as("el filtro por active se aplica en la query, no después del top-K").isEmpty();
-    var afterRetire = body(mvc.perform(practice(post("/api/llm/rag/chat")).header("Idempotency-Key", UUID.randomUUID().toString())
+    var afterRetire = body(mvc.perform(practiceAs(post("/api/llm/rag/chat"), UUID.randomUUID()).header("Idempotency-Key", UUID.randomUUID().toString())
         .content("{\"courseCohortId\":\"" + cohort + "\",\"learnerId\":\"" + learner + "\",\"documentIds\":[\"" + docId
             + "\"],\"pregunta\":\"¿Qué dice el documento sobre los requerimientos?\"}")).andExpect(status().isOk()));
     assertThat(afterRetire.path("estado").asText()).isEqualTo("BLOCKED_NO_SOURCE");
