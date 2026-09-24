@@ -2,7 +2,6 @@ package ar.edu.utn.frc.tup.piv.llm.application.service;
 
 import ar.edu.utn.frc.tup.piv.llm.application.exception.ResourceNotFoundException;
 import ar.edu.utn.frc.tup.piv.llm.domain.RubricValidator;
-import ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.ChallengeCalibrationAssignmentRepository;
 import ar.edu.utn.frc.tup.piv.llm.adapter.out.persistence.RubricVersionRepository;
 import ar.edu.utn.frc.tup.piv.llm.application.model.CallerIdentity;
 import java.math.BigDecimal;
@@ -17,27 +16,29 @@ public class ChallengeRubricOverlayService {
   public static final String OVERLAY_KIND = "MODULAR_CUSTOM";
 
   private final RubricVersionRepository rubrics;
-  private final ChallengeCalibrationAssignmentRepository assignments;
   private final EffectiveRubricResolver resolver;
 
-  public ChallengeRubricOverlayService(RubricVersionRepository rubrics,
-      ChallengeCalibrationAssignmentRepository assignments, EffectiveRubricResolver resolver) {
+  public ChallengeRubricOverlayService(RubricVersionRepository rubrics, EffectiveRubricResolver resolver) {
     this.rubrics = rubrics;
-    this.assignments = assignments;
     this.resolver = resolver;
   }
 
   @Transactional(readOnly = true)
   public List<ChallengeOverlayVersion> listByChallenge(UUID courseId, UUID challengeId) {
-    requireChallengeInCourse(challengeId, courseId);
     return rubrics.listByChallenge(courseId, challengeId).stream()
         .map(this::toOverlayVersion)
         .toList();
   }
 
   @Transactional(readOnly = true)
+  public List<CourseOverlayItem> listAllByCourse(UUID courseId) {
+    return rubrics.listOverlaysByCourse(courseId).stream()
+        .map(row -> toCourseOverlayItem(row.challengeId(), row.version()))
+        .toList();
+  }
+
+  @Transactional(readOnly = true)
   public ChallengeOverlayVersion get(UUID courseId, UUID challengeId, UUID versionId) {
-    requireChallengeInCourse(challengeId, courseId);
     return rubrics.findChallenge(courseId, challengeId, versionId)
         .map(this::toOverlayVersion)
         .orElseThrow(() -> new ResourceNotFoundException("El overlay no existe para este desafío"));
@@ -45,7 +46,6 @@ public class ChallengeRubricOverlayService {
 
   @Transactional
   public ChallengeOverlayVersion createDraft(UUID courseId, UUID challengeId, String name, UUID baselineVersionId, CallerIdentity actor) {
-    requireChallengeInCourse(challengeId, courseId);
     if (name == null || name.isBlank()) throw new IllegalArgumentException("El nombre del overlay es obligatorio");
     // Verificar que el baseline existe y está publicado
     var baseline = rubrics.find(courseId, baselineVersionId)
@@ -61,7 +61,6 @@ public class ChallengeRubricOverlayService {
   @Transactional
   public ChallengeOverlayVersion autosave(UUID courseId, UUID challengeId, UUID versionId, long expectedRevision,
       OverlayInput input, CallerIdentity actor) {
-    requireChallengeInCourse(challengeId, courseId);
     validate(input);
     if (!rubrics.advanceChallengeRevision(courseId, challengeId, versionId, expectedRevision)) {
       throw new RubricDraftService.OptimisticLockException("El overlay fue actualizado en otro dispositivo; recargá antes de guardar");
@@ -74,7 +73,6 @@ public class ChallengeRubricOverlayService {
 
   @Transactional
   public void publish(UUID courseId, UUID challengeId, UUID versionId, CallerIdentity actor) {
-    requireChallengeInCourse(challengeId, courseId);
     var version = get(courseId, challengeId, versionId);
     if (version.customDimensions().isEmpty()) {
       throw new IllegalStateException("El overlay debe tener al menos una dimensión custom para publicarse");
@@ -89,7 +87,6 @@ public class ChallengeRubricOverlayService {
 
   @Transactional
   public ChallengeOverlayVersion createNextVersion(UUID courseId, UUID challengeId, UUID publishedVersionId, CallerIdentity actor) {
-    requireChallengeInCourse(challengeId, courseId);
     return rubrics.createNextChallengeDraft(courseId, challengeId, publishedVersionId, actor.delegatedUserId())
         .map(this::toOverlayVersion)
         .orElseThrow(() -> new IllegalStateException("Solo una versión publicada del overlay puede originar una nueva versión"));
@@ -97,15 +94,8 @@ public class ChallengeRubricOverlayService {
 
   @Transactional(readOnly = true)
   public List<EffectiveRubricResolver.EffectiveDimension> getEffectiveProfile(UUID courseId, UUID challengeId, UUID overlayVersionId) {
-    requireChallengeInCourse(challengeId, courseId);
     var overlay = get(courseId, challengeId, overlayVersionId);
     return resolver.resolve(overlay.baselineVersionId(), overlayVersionId);
-  }
-
-  private void requireChallengeInCourse(UUID challengeId, UUID courseId) {
-    if (challengeId == null || !assignments.belongsToCourse(challengeId, courseId)) {
-      throw new ResourceNotFoundException("El desafío no pertenece a este curso");
-    }
   }
 
   private void validate(OverlayInput input) {
@@ -140,6 +130,20 @@ public class ChallengeRubricOverlayService {
     );
   }
 
+  private CourseOverlayItem toCourseOverlayItem(UUID challengeId, RubricDraftService.RubricVersion version) {
+    return new CourseOverlayItem(
+        challengeId,
+        version.id(),
+        version.familyId(),
+        version.version(),
+        version.name(),
+        version.state(),
+        version.revision(),
+        rubrics.rubricKindOf(version.id()),
+        rubrics.baselineVersionIdOf(version.id())
+    );
+  }
+
   public record OverlayInput(String name, String userPrompt, List<RubricDraftService.DimensionCustomInput> customDimensions) {}
 
   public record ChallengeOverlayVersion(
@@ -152,6 +156,18 @@ public class ChallengeRubricOverlayService {
       String rubricKind,
       String userPrompt,
       List<RubricDraftService.DimensionCustomInput> customDimensions,
+      UUID baselineVersionId
+  ) {}
+
+  public record CourseOverlayItem(
+      UUID challengeId,
+      UUID id,
+      UUID familyId,
+      int version,
+      String name,
+      String state,
+      long revision,
+      String rubricKind,
       UUID baselineVersionId
   ) {}
 }

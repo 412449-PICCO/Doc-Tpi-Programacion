@@ -176,14 +176,14 @@ public class RubricVersionRepository {
         """, versionId, dimension.key().name(), dimension.label(), dimension.criterion(), serialize(dimension.anchors()), dimension.weight());
   }
 
-  /** Pesos + evaluator_prompt de las 5 dimensiones de una versiÃ³n de rÃºbrica â€” la calibraciÃ³n
-   * siempre referencia una versiÃ³n ya PUBLICADA (constraint FK), asÃ­ que a diferencia de
+  /** Pesos + evaluator_prompt de las 5 dimensiones de una versión de rúbrica — la calibración
+   * siempre referencia una versión ya PUBLICADA (constraint FK), así que a diferencia de
    * {@link #dimensionsOfDraft} esto no filtra por curso ni por estado DRAFT. */
   public List<DimensionInput> weightsAndPrompts(UUID rubricVersionId) { return dimensions(rubricVersionId); }
 
-  // === MÃ©todos para overlays de desafÃ­o (Parte A) ===
+  // === Métodos para overlays de desafío (Parte A) ===
 
-  /** Lista todas las versiones de overlay para un desafÃ­o especÃ­fico. */
+  /** Lista todas las versiones de overlay para un desafío específico. */
   public List<RubricVersion> listByChallenge(UUID courseId, UUID challengeId) {
     return jdbc.query("""
         select v.id, v.family_id, v.version_no, v.name, v.state::text as state, v.revision, v.template_origin_version_id
@@ -202,7 +202,32 @@ public class RubricVersionRepository {
         ), courseId, challengeId);
   }
 
-  /** Busca una versiÃ³n especÃ­fica de overlay para un desafÃ­o. */
+  /** Lista todos los overlays (scope CHALLENGE) del curso, con su challenge_id. */
+  public List<ChallengeRow> listOverlaysByCourse(UUID courseId) {
+    return jdbc.query("""
+        select v.id, v.family_id, v.version_no, v.name, v.state::text as state, v.revision, v.template_origin_version_id,
+               f.challenge_id
+        from llm.rubric_version_v2 v
+        join llm.rubric_families f on f.id = v.family_id
+        where f.course_id = ? and f.scope = 'CHALLENGE'
+        order by f.challenge_id, v.version_no desc
+        """, (rs, row) -> new ChallengeRow(
+            rs.getObject("challenge_id", UUID.class),
+            versionRow(
+                rs.getObject("id", UUID.class),
+                rs.getObject("family_id", UUID.class),
+                rs.getInt("version_no"),
+                rs.getString("name"),
+                rs.getString("state"),
+                rs.getLong("revision"),
+                rs.getObject("template_origin_version_id", UUID.class)
+            )
+        ), courseId);
+  }
+
+  public record ChallengeRow(UUID challengeId, RubricVersion version) {}
+
+  /** Busca una versión específica de overlay para un desafío. */
   public Optional<RubricVersion> findChallenge(UUID courseId, UUID challengeId, UUID versionId) {
     return jdbc.query("""
         select v.id, v.family_id, v.version_no, v.name, v.state::text as state, v.revision, v.template_origin_version_id
@@ -220,7 +245,7 @@ public class RubricVersionRepository {
         ), courseId, challengeId, versionId).stream().findFirst();
   }
 
-  /** Crea un borrador de overlay para un desafÃ­o, vinculado a una rÃºbrica base del curso. */
+  /** Crea un borrador de overlay para un desafío, vinculado a una rúbrica base del curso. */
   public Optional<RubricVersion> createDraftForChallenge(UUID courseId, UUID challengeId, String name,
       UUID baselineVersionId, UUID actorId) {
     UUID familyId = UUID.randomUUID();
@@ -232,7 +257,7 @@ public class RubricVersionRepository {
         values (?, 'CHALLENGE', ?, ?, 2, ?)
         """, familyId, courseId, challengeId, actorId);
 
-    // Crear la versiÃ³n del overlay con rubric_kind MODULAR_CUSTOM y baseline_version_id
+    // Crear la versión del overlay con rubric_kind MODULAR_CUSTOM y baseline_version_id
     jdbc.update("""
         insert into llm.rubric_version_v2 (id, family_id, version_no, name, rubric_kind, user_prompt,
             baseline_version_id, created_by_user_id)
@@ -253,7 +278,7 @@ public class RubricVersionRepository {
         ), versionId).stream().findFirst();
   }
 
-  /** Avanza la revisiÃ³n de un overlay (optimistic locking). */
+  /** Avanza la revisión de un overlay (optimistic locking). */
   public boolean advanceChallengeRevision(UUID courseId, UUID challengeId, UUID versionId, long expectedRevision) {
     return jdbc.update("""
         update llm.rubric_version_v2 v
@@ -264,7 +289,7 @@ public class RubricVersionRepository {
         """, courseId, challengeId, versionId, expectedRevision) == 1;
   }
 
-  /** Actualiza el nombre de una versiÃ³n de overlay. */
+  /** Actualiza el nombre de una versión de overlay. */
   public void updateChallengeVersionName(UUID courseId, UUID challengeId, UUID versionId, String name) {
     jdbc.update("""
         update llm.rubric_version_v2 v
@@ -275,7 +300,7 @@ public class RubricVersionRepository {
         """, name, courseId, challengeId, versionId);
   }
 
-  /** Actualiza el user_prompt de una versiÃ³n de overlay. */
+  /** Actualiza el user_prompt de una versión de overlay. */
   public void updateChallengePrompt(UUID courseId, UUID challengeId, UUID versionId, String userPrompt) {
     jdbc.update("""
         update llm.rubric_version_v2 v
@@ -311,7 +336,7 @@ public class RubricVersionRepository {
         """, courseId, challengeId, versionId) == 1;
   }
 
-  /** Crea una nueva versiÃ³n de overlay basada en una versiÃ³n publicada. */
+  /** Crea una nueva versión de overlay basada en una versión publicada. */
   public Optional<RubricVersion> createNextChallengeDraft(UUID courseId, UUID challengeId,
       UUID publishedVersionId, UUID actorId) {
     var published = findChallenge(courseId, challengeId, publishedVersionId);
@@ -328,14 +353,14 @@ public class RubricVersionRepository {
     UUID newVersionId = UUID.randomUUID();
     UUID baseline = baselineVersionIdOf(publishedVersionId);
 
-    // Crear la nueva versiÃ³n
+    // Crear la nueva versión
     jdbc.update("""
         insert into llm.rubric_version_v2 (id, family_id, version_no, name, rubric_kind, user_prompt,
             baseline_version_id, based_on_version_id, created_by_user_id)
         values (?, ?, ?, ?, 'MODULAR_CUSTOM', '', ?, ?, ?)
         """, newVersionId, familyId, nextVersion, published.get().name(), baseline, publishedVersionId, actorId);
 
-    // Copiar las dimensiones custom de la versiÃ³n publicada
+    // Copiar las dimensiones custom de la versión publicada
     jdbc.update("""
         insert into llm.rubric_custom_dimensions
             (rubric_version_id, dimension_key, label, criterion, anchors, weight, display_order)
@@ -358,7 +383,7 @@ public class RubricVersionRepository {
         ), newVersionId).stream().findFirst();
   }
 
-  /** Obtiene las dimensiones custom de una versiÃ³n de overlay. */
+  /** Obtiene las dimensiones custom de una versión de overlay. */
   public List<DimensionCustomInput> challengeCustomDimensions(UUID versionId) {
     return jdbc.query("""
         select dimension_key, label, criterion, anchors::text as anchors, weight
@@ -386,7 +411,7 @@ public class RubricVersionRepository {
   public UUID baselineVersionIdOf(UUID versionId) {
     return jdbc.query("select baseline_version_id from llm.rubric_version_v2 where id = ?",
         (rs, row) -> rs.getObject("baseline_version_id", UUID.class), versionId)
-        .stream().findFirst().orElse(null);
+        .stream().filter(value -> value != null).findFirst().orElse(null);
   }
 
   /** Public accessor: rubric_kind of a rubric version. */
@@ -402,8 +427,8 @@ public class RubricVersionRepository {
         (rs, row) -> rs.getString("user_prompt"), versionId)
         .stream().findFirst().orElse("");
   }
-  private String serialize(Object value) { try { return mapper.writeValueAsString(value); } catch (JsonProcessingException exception) { throw new IllegalArgumentException("Anclas invÃ¡lidas", exception); } }
-  private Anchors deserialize(String value) { try { return mapper.readValue(value, Anchors.class); } catch (JsonProcessingException exception) { throw new IllegalStateException("Anclas almacenadas invÃ¡lidas", exception); } }
+  private String serialize(Object value) { try { return mapper.writeValueAsString(value); } catch (JsonProcessingException exception) { throw new IllegalArgumentException("Anclas inválidas", exception); } }
+  private Anchors deserialize(String value) { try { return mapper.readValue(value, Anchors.class); } catch (JsonProcessingException exception) { throw new IllegalStateException("Anclas almacenadas inválidas", exception); } }
   private record FamilyVersion(UUID id, int version) {}
 }
 

@@ -458,6 +458,30 @@ class RubricVersionRepositoryCoverageTest {
   }
 
   @Test
+  void listOverlaysByCourseListsCourseWideChallengeVersions() {
+    var jdbc = mock(JdbcTemplate.class);
+    var repository = new RubricVersionRepository(jdbc, new ObjectMapper());
+    UUID course = UUID.randomUUID(), challenge = UUID.randomUUID();
+    when(jdbc.query(contains("f.scope = 'CHALLENGE'"), any(RowMapper.class), any(UUID.class)))
+        .thenAnswer(rowsOf(r -> {
+          when(r.getObject("challenge_id", UUID.class)).thenReturn(challenge);
+          when(r.getObject("id", UUID.class)).thenReturn(UUID.randomUUID());
+          when(r.getObject("family_id", UUID.class)).thenReturn(UUID.randomUUID());
+          when(r.getInt("version_no")).thenReturn(1);
+          when(r.getString("name")).thenReturn("Overlay A");
+          when(r.getString("state")).thenReturn("PUBLISHED");
+          when(r.getLong("revision")).thenReturn(2L);
+        }));
+
+    List<RubricVersionRepository.ChallengeRow> result = repository.listOverlaysByCourse(course);
+
+    assertThat(result).hasSize(1);
+    assertThat(result.get(0).challengeId()).isEqualTo(challenge);
+    assertThat(result.get(0).version().name()).isEqualTo("Overlay A");
+    assertThat(result.get(0).version().state()).isEqualTo("PUBLISHED");
+  }
+
+  @Test
   void findChallengeReturnsTheVersionWhenPresent() {
     var jdbc = mock(JdbcTemplate.class);
     var repository = new RubricVersionRepository(jdbc, new ObjectMapper());
