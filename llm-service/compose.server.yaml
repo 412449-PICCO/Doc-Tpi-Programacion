@@ -1,0 +1,107 @@
+# ==============================================================================
+# Docker Compose para desplegar llm-service en un servidor, usando la imagen ya
+# publicada en Docker Hub (no construye nada).
+#
+# Uso en el servidor (junto a este archivo deben estar .env y resolv.conf):
+#   docker compose -f compose.server.yaml pull
+#   docker compose -f compose.server.yaml up -d
+#
+# Requisitos:
+#   - .env con TS_AUTHKEY, LLM_CREDENTIALS_MASTER_KEY, etc. (ver .env.example)
+#   - resolv.conf presente para resolución de DNS (MagicDNS + Docker DNS)
+#   - Docker Hub: si el repo es privado, `docker login` antes del pull
+#
+# IMPORTANTE: no correr a la vez con el stack local (compose.mesh.yaml). Dos
+# nodos `llm-service` y dos instancias `llm-service:8086` en Eureka se pisan.
+# ==============================================================================
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: tpi-llm-postgres
+    environment:
+      POSTGRES_DB: llm
+      POSTGRES_USER: llm
+      POSTGRES_PASSWORD: llm
+    volumes:
+      - llm-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U llm -d llm"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+  mesh-client:
+    image: tailscale/tailscale:v1.102.3
+    container_name: mesh-llm
+    hostname: ${TS_HOSTNAME:-llm-service}
+    environment:
+      - TS_AUTHKEY=${TS_AUTHKEY}
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_HOSTNAME=${TS_HOSTNAME:-llm-service}
+      - TS_USERSPACE=false
+    volumes:
+      - mesh_state:/var/lib/tailscale
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "tailscale status --json | grep -q Running"]
+      interval: 5s
+      timeout: 3s
+      retries: 60
+      start_period: 20s
+
+  llm-service:
+    # Imagen publicada. Fijar siempre un tag exacto (v1, v2, ...): nada de latest.
+    image: iwachito/llm-service:${LLM_IMAGE_TAG:-v1}
+    container_name: llm-service
+    # Comparte el namespace de red del sidecar Tailscale:
+    # SIN ports:, SIN networks:, SIN dns:, SIN extra_hosts:.
+    network_mode: "service:mesh-client"
+    restart: unless-stopped
+    depends_on:
+      mesh-client:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    environment:
+      SERVER_PORT: "${SERVER_PORT:-8086}"
+      MANAGEMENT_PORT: "${MANAGEMENT_PORT:-8087}"
+      SPRING_DATASOURCE_URL: "${SPRING_DATASOURCE_URL:-jdbc:postgresql://postgres:5432/llm}"
+      SPRING_DATASOURCE_USERNAME: "${SPRING_DATASOURCE_USERNAME:-llm}"
+      SPRING_DATASOURCE_PASSWORD: "${SPRING_DATASOURCE_PASSWORD:-llm}"
+      LLM_CREDENTIALS_MASTER_KEY: "${LLM_CREDENTIALS_MASTER_KEY}"
+      # Conectividad a plataforma vía MagicDNS
+      EUREKA_URL: "${EUREKA_URL:-http://tpi-plataforma.tail767776.ts.net:8761/eureka/}"
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: "${EUREKA_URL:-http://tpi-plataforma.tail767776.ts.net:8761/eureka/}"
+      GATEWAY_URL: "${GATEWAY_URL:-http://tpi-plataforma.tail767776.ts.net:8080}"
+      # courses-service vía Gateway: obligatorias sin el perfil workbench (el servicio no arranca sin ellas).
+      LLM_COURSES_BASE_URL: "${LLM_COURSES_BASE_URL:-${GATEWAY_URL:-http://tpi-plataforma.tail767776.ts.net:8080}}"
+      LLM_COURSES_SERVICE_TOKEN: "${LLM_COURSES_SERVICE_TOKEN:?falta LLM_COURSES_SERVICE_TOKEN en .env (token M2M de la plataforma)}"
+      # JWKS a través del API Gateway (nunca a users-service directo)
+      JWKS_URL: "${JWKS_URL:-http://tpi-plataforma.tail767776.ts.net:8080/.well-known/jwks.json}"
+      APP_CLIENT_ID: "${APP_CLIENT_ID:-llm-service}"
+      APP_CLIENT_SECRET: "${APP_CLIENT_SECRET:-}"
+      # Spring Cloud: registrar solo la IP virtual de Tailscale (100.x)
+      SPRING_CLOUD_INETUTILS_PREFERRED_NETWORKS_0: "100."
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "true"
+      EUREKA_INSTANCE_INSTANCE_ID: "llm-service:${SERVER_PORT:-8086}"
+    volumes:
+      - ./resolv.conf:/etc/resolv.conf:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:${MANAGEMENT_PORT:-8087}/actuator/health | grep -q UP"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 40s
+
+volumes:
+  # Nombre configurable: si el volumen tiene un historial de Flyway incompatible con el código,
+  # apuntar LLM_PG_VOLUME (en .env) a uno nuevo evita borrar el viejo. Default = el nombre de siempre.
+  llm-postgres-data:
+    name: ${LLM_PG_VOLUME:-llm-service_llm-postgres-data}
+  mesh_state:

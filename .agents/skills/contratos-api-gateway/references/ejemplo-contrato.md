@@ -8,8 +8,8 @@
 - **Servicio:** `llm-service` · prefijo `/api/llm/**`.
 - **Recurso del sprint:** golden set — un docente autorizado crea un golden set, carga
   entradas con puntaje de referencia y las consulta tras reiniciar.
-- **Integración:** consume `intento_cerrado.v1` (equipo de desafíos); publica
-  `score_de_ia_calculado.v1`. Para este sprint solo el recurso golden set.
+- **Integración:** consume `ATTEMPT_CLOSED` (equipo de desafíos); publica
+  `SCORE_CALCULATED`. Para este sprint solo el recurso golden set.
 - **Convenciones de plataforma:** Gateway única puerta, M2M `aud=llm-service`, scope
   `llm.golden-set.manage`, correlación `traceparent` + `X-Request-Id`.
 - **Sprint / feature:** S1 / golden set → se pide una **adenda**, no el contrato entero.

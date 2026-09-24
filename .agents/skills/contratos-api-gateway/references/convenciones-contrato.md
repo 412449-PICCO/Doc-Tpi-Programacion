@@ -109,7 +109,7 @@ un `UPDATE`/`DELETE` destructivo se rechaza a nivel base. Cambiar una rúbrica e
 - Un campo nuevo que cruza equipos se **congela con el consumidor** antes de publicarlo;
   no se agrega al contrato «por las dudas».
 - Los canales de eventos llevan el sufijo de versión mayor en el address:
-  `intento_cerrado.v1`.
+  `ATTEMPT_CLOSED`.
 
 ## 12. Qué NO hacer
 

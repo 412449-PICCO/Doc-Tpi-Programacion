@@ -5,99 +5,107 @@
 ## Contexto de entrada que aportó el equipo (resumido)
 
 - **Servicio:** `llm-service`.
-- **Publica:** `score_de_ia_calculado.v1` (el resultado de evaluar un intento) — lo
-  consume el motor de desafíos para aplicar XP.
-- **Consume:** `intento_cerrado.v1` (lo publica el motor de desafíos) — dispara la
-  evaluación.
+- **Publica:** `SCORE_CALCULATED` (el resultado de evaluar un intento) — lo consume el
+  servicio de prácticas, que se lo reenvía al motor de desafíos para aplicar XP.
+- **Consume:** `ATTEMPT_CLOSED` (lo publica el servicio de prácticas) — dispara la evaluación.
 - **Regla de dominio:** `llm-service` **nunca** asigna XP; solo devuelve el score.
+- **Tópicos:** todavía no asignados por Notificaciones → nombres provisorios.
 
 ## Salida A — fragmento de AsyncAPI
 
 ```yaml
 channels:
-  intento_cerrado.v1:
-    address: intento_cerrado.v1
+  practice-events:                     # provisorio: lo asigna Notificaciones
+    address: practice-events
+    x-topic-status: pending-assignment
     messages:
-      intentoCerrado: { $ref: '#/components/messages/IntentoCerrado' }
-  score_de_ia_calculado.v1:
-    address: score_de_ia_calculado.v1
+      attemptClosed: { $ref: '#/components/messages/AttemptClosed' }
+  evaluation-events:                   # provisorio
+    address: evaluation-events
+    x-topic-status: pending-assignment
     messages:
-      scoreCalculado: { $ref: '#/components/messages/ScoreCalculado' }
+      scoreCalculated: { $ref: '#/components/messages/ScoreCalculated' }
 operations:
-  consumeIntentoCerrado: { action: receive, channel: { $ref: '#/channels/intento_cerrado.v1' } }
-  publishScoreCalculado: { action: send,    channel: { $ref: '#/channels/score_de_ia_calculado.v1' } }
+  consumeAttemptClosed:   { action: receive, channel: { $ref: '#/channels/practice-events' } }
+  publishScoreCalculated: { action: send,    channel: { $ref: '#/channels/evaluation-events' } }
 components:
+  messages:
+    AttemptClosed:   { payload: { $ref: '#/components/schemas/AttemptClosedEvent' } }
+    ScoreCalculated: { payload: { $ref: '#/components/schemas/ScoreCalculatedEvent' } }
   schemas:
     Envelope:
       type: object
-      required: [eventId, version, occurredAt, producer, data]
+      required: [eventId, eventType, timestamp, producer, payload]
+      additionalProperties: false
       properties:
-        eventId:    { type: string, format: uuid }
-        version:    { type: string, const: '1.0' }
-        occurredAt: { type: string, format: date-time }
-        producer:   { type: string }
-        data:       { type: object }
-    ScoreCalculado:
+        eventId:   { type: string, format: uuid }
+        eventType: { type: string }
+        timestamp: { type: string, format: date-time }
+        producer:  { type: string }
+        payload:   { type: object }
+    ScoreCalculatedEvent:
       allOf:
         - $ref: '#/components/schemas/Envelope'
         - type: object
           properties:
-            data:
+            eventType: { const: SCORE_CALCULATED }
+            payload:
               type: object
-              required: [attemptId, courseCohortId, learnerId, aggregateScore, dimensions, rubricVersion]
+              required: [attemptId, courseCohortId, learnerId, score, dimensions, rubricVersionId]
               properties:
-                attemptId:      { type: string, format: uuid }
-                courseCohortId: { type: string, format: uuid }
-                learnerId:      { type: string, format: uuid }
-                aggregateScore: { type: integer, minimum: 0, maximum: 100 }
-                dimensions:     { $ref: '#/components/schemas/Dimensions' }
-                confidence:     { type: number, minimum: 0, maximum: 1 }
-                rubricVersion:  { type: string }
-    IntentoCerrado:
+                attemptId:       { type: string, format: uuid }
+                courseCohortId:  { type: string, format: uuid }
+                learnerId:       { type: string, format: uuid }
+                score:           { type: integer, minimum: 0, maximum: 100 }
+                dimensions:      { type: object }
+                rubricVersionId: { type: string, format: uuid }
+    AttemptClosedEvent:
       allOf:
         - $ref: '#/components/schemas/Envelope'
         - type: object
           properties:
-            data:
+            eventType: { const: ATTEMPT_CLOSED }
+            payload:
               type: object
-              required: [attemptId, courseCohortId, learnerId, transcript, rubricVersion]
+              required: [attemptId, courseCohortId, learnerId, transcript]
               properties:
                 attemptId:      { type: string, format: uuid }
                 courseCohortId: { type: string, format: uuid }
                 learnerId:      { type: string, format: uuid }
                 transcript:     { type: array, items: { type: object } }
-                rubricVersion:  { type: string }
 ```
 
 ## Salida B — sección del doc inter-equipos
 
-**Publicamos `score_de_ia_calculado.v1`** — consumidor: motor de desafíos.
-- `data`: `aggregateScore` (0–100), `dimensions`, `confidence`, `rubricVersion`. **Nunca
-  un valor de XP.**
-- El motor traduce el score a modificador y aplica XP + monedas en **una** transacción.
+**Publicamos `SCORE_CALCULATED`** — consumidor: servicio de prácticas.
+- `payload`: `score` (0–100), `dimensions`, `rubricVersionId`. **Nunca un valor de XP.**
+- El servicio de prácticas se lo reenvía al motor, que traduce el score a modificador y
+  aplica XP + monedas en **una** transacción.
 
-**Consumimos `intento_cerrado.v1`** — lo publica el motor de desafíos.
+**Consumimos `ATTEMPT_CLOSED`** — lo publica el servicio de prácticas.
 - Estructura mínima que necesitamos: `attemptId`, `courseCohortId`, `learnerId`,
-  `transcript`, `rubricVersion` (**obligatorio** para elegir la calibración).
-- 🔴 Pedir estos campos antes de que el equipo dueño cierre el contrato de eventos de la
-  plataforma.
+  `transcript` (**obligatorio**: sin la conversación no hay nada que evaluar).
+- 🔴 Pedir estos campos antes de que el equipo dueño cierre el contrato de eventos.
+- 🔴 Tópico: pedirle a Notificaciones el nombre definitivo.
 
 ---
 
 ## Por qué queda así
 
-- **Topic `<evento>.v1`** en pasado: `intento_cerrado`, `score_de_ia_calculado` — son
-  hechos consumados, no comandos.
-- **Envelope común** en los dos: `eventId` sirve para que el consumidor deduplique
-  (at-least-once).
-- La **correlación** (`traceparent`, `X-Request-Id`) va en headers de Kafka, no en
-  `data`. Al consumir `intento_cerrado` y publicar `score_de_ia_calculado`, se propagan
-  los mismos headers.
-- El **consumidor de `intento_cerrado` es idempotente**: si el evento llega dos veces, se
-  encola una sola evaluación (índice por `eventId`).
-- `score_de_ia_calculado` se publica por **outbox**: se escribe en la misma transacción
-  que guarda el resultado de la evaluación.
-- El `data` de `score_de_ia_calculado` **no** tiene XP — es la frontera de dominio: el
+- **`eventType` en `MAYÚSCULAS_CON_GUION_BAJO` y en pasado**: `ATTEMPT_CLOSED`,
+  `SCORE_CALCULATED` — son hechos consumados, no comandos.
+- **Envelope de cinco campos, sin `eventVersion`**: es lo que fija el PDF. `eventId` sirve
+  para que el consumidor deduplique (at-least-once).
+- **Tópicos provisorios**: los grupos no crean tópicos; los asigna Notificaciones.
+- La **correlación** (`traceparent`, `X-Request-Id`) va en headers de Kafka, no en el
+  `payload`. Al consumir `ATTEMPT_CLOSED` y publicar `SCORE_CALCULATED`, se propagan los
+  mismos headers.
+- El **consumidor de `ATTEMPT_CLOSED` es idempotente**: si el evento llega dos veces, se
+  encola una sola evaluación (índice por `eventId`). Un evento inválido no se descarta en
+  silencio: queda guardado con el motivo (no hay tópico dead-letter).
+- `SCORE_CALCULATED` se publica por **outbox**: se escribe en la misma transacción que
+  guarda el resultado de la evaluación.
+- El `payload` de `SCORE_CALCULATED` **no** tiene XP — es la frontera de dominio:
   `llm-service` da el número, el motor de desafíos aplica la economía.
-- `rubricVersion` es **obligatorio** en el evento que consumimos porque sin él no se sabe
-  contra qué calibración evaluar — se pide antes de que el contrato se congele.
+- Este tópico mezcla `SCORE_CALCULATED` y `SCORE_DEFERRED` con payloads distintos: el
+  consumidor lee `Event<?>` y ramifica por `eventType`.

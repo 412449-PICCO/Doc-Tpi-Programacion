@@ -1,26 +1,32 @@
-# Esqueleto AsyncAPI 3.0 — un canal por evento, address = <evento>.v<major>.
-# Envelope común; la correlación (traceparent, X-Request-Id) viaja en HEADERS, no en el payload.
+# Esqueleto AsyncAPI 3.0 — un canal por tópico; un tópico agrupa varios eventType.
+# Envelope de cinco campos (KAFKA.pdf); la correlación (traceparent, X-Request-Id) viaja en HEADERS.
+# Los tópicos los asigna Notificaciones: hasta entonces, x-topic-status: pending-assignment.
 asyncapi: 3.0.0
 info:
   title: <N> Service Kafka Events
   version: 1.0.0
-  description: Eventos asíncronos de <n>-service. La correlación viaja en headers traceparent y X-Request-Id.
+  description: >
+    Eventos asíncronos de <n>-service. Estándar KAFKA.pdf: envelope {eventId, eventType, timestamp,
+    producer, payload} sin eventVersion, eventType en MAYUSCULAS_CON_GUION_BAJO, todo en ingles.
+    La correlación viaja en headers traceparent y X-Request-Id.
 servers:
-  platformKafka:
-    host: kafka:9092
+  eventBus:
+    host: event-bus:29092
     protocol: kafka
 channels:
-  <evento_que_publica>.v1:
-    address: <evento_que_publica>.v1
+  <topico_que_publica>:
+    address: <topico_que_publica>
+    x-topic-status: pending-assignment      # quitar cuando Notificaciones lo asigne
     messages:
       <evento>: { $ref: '#/components/messages/<Evento>' }
-  <evento_que_consume>.v1:
-    address: <evento_que_consume>.v1
+  <topico_que_consume>:
+    address: <topico_que_consume>
+    x-topic-status: pending-assignment
     messages:
       <evento>: { $ref: '#/components/messages/<EventoEntrante>' }
 operations:
-  publish<Evento>:   { action: send,    channel: { $ref: '#/channels/<evento_que_publica>.v1' } }
-  consume<Evento>:   { action: receive, channel: { $ref: '#/channels/<evento_que_consume>.v1' } }
+  publish<Evento>:   { action: send,    channel: { $ref: '#/channels/<topico_que_publica>' } }
+  consume<Evento>:   { action: receive, channel: { $ref: '#/channels/<topico_que_consume>' } }
 components:
   messages:
     <Evento>:        { payload: { $ref: '#/components/schemas/<Payload>' } }
@@ -28,19 +34,21 @@ components:
   schemas:
     Envelope:
       type: object
-      required: [eventId, version, occurredAt, producer, data]
+      required: [eventId, eventType, timestamp, producer, payload]
+      additionalProperties: false
       properties:
-        eventId:    { type: string, format: uuid }        # idempotencia: reprocesar no duplica
-        version:    { type: string, const: '1.0' }
-        occurredAt: { type: string, format: date-time }
-        producer:   { type: string }
-        data:       { type: object }
+        eventId:   { type: string, format: uuid }        # idempotencia: reprocesar no duplica
+        eventType: { type: string }                      # MAYUSCULAS_CON_GUION_BAJO, hecho ya ocurrido
+        timestamp: { type: string, format: date-time }   # ISO-8601 UTC
+        producer:  { type: string }                      # nombre del microservicio
+        payload:   { type: object }
     <Payload>:
       allOf:
         - $ref: '#/components/schemas/Envelope'
         - type: object
           properties:
-            data:
+            eventType: { const: <EVENT_TYPE_EN_INGLES> }
+            payload:
               type: object
               required: [ <campos obligatorios del evento> ]
               properties: {}
@@ -49,4 +57,4 @@ components:
         - $ref: '#/components/schemas/Envelope'
         - type: object
           properties:
-            data: { type: object }
+            payload: { type: object }

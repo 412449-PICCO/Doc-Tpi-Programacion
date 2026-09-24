@@ -20,7 +20,7 @@ services:
 
   llm-service:
     build: .
-    container_name: tpi-llm
+    container_name: llm-service
     expose:
       - "8086"
       - "8087"
@@ -35,12 +35,18 @@ services:
       GATEWAY_URL: ${GATEWAY_URL:-http://api-gateway:8080}
       APP_CLIENT_ID: llm-service
       APP_CLIENT_SECRET: ${APP_CLIENT_SECRET:-}
-      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      # event-bus:29092 es el bus de la plataforma (KAFKA.pdf). Por defecto se usa el broker local "kafka-local"
+      # de este compose; si la plataforma está levantada en la red tpi-platform, apuntar a event-bus:29092.
+      KAFKA_BOOTSTRAP: ${KAFKA_BOOTSTRAP:-kafka-local:29092}
       LLM_KAFKA_ENABLED: ${LLM_KAFKA_ENABLED:-true}
+      # The base stack has no Courses mock. These defaults make configuration
+      # explicit so Spring can start; deployments must override both values.
+      LLM_COURSES_BASE_URL: ${LLM_COURSES_BASE_URL:-http://host.docker.internal:4300}
+      LLM_COURSES_SERVICE_TOKEN: ${LLM_COURSES_SERVICE_TOKEN:-local-gateway-m2m-token}
     depends_on:
       postgres:
         condition: service_healthy
-      kafka:
+      kafka-local:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8087/actuator/health | grep -q UP"]
@@ -56,42 +62,44 @@ services:
   # ---------------------------------------------------------------------------------
   # Todavía sin código que los use (sin dependencia en pom.xml, sin cliente instanciado).
   # Quedan preparados y apagados acá para no perder tiempo de config el día que hagan
-  # falta. Detalle de cada uno y qué lo activaría: docs/39-servicios-docker.md.
+  # falta. Detalle de cada uno y qué lo activaría: docs/02-arquitectura-y-plataforma/05-servicios-docker.md.
   # ---------------------------------------------------------------------------------
 
   # redis:
-  #   # Cola/caché/cuotas (docs/12 §3). Descartado a propósito para S1: "a 120 usuarios
-  #   # probablemente no haga falta Redis" (docs/06 Parte 2) — la cola interna usa
+  #   # Cola/caché/cuotas (docs/02-arquitectura-y-plataforma/05-servicios-docker.md). Descartado a
+  #   # propósito para S1: "a 120 usuarios probablemente no haga falta Redis" — la cola interna usa
   #   # Postgres SKIP LOCKED. Revisar si el volumen de trabajos crece.
   #   image: redis:7-alpine
   #   command: ["redis-server", "--appendonly", "yes"]
   #   volumes:
   #     - llm-redis-data:/data
 
-  kafka:
-    # Bus de eventos de la plataforma (Tema 11) — "no lo operamos" en producción real (docs/26
-    # Parte 3); un broker local sirve para probar la publicación de `moderation-events`
-    # (LLM-EP01-H07) antes de integrar con el broker de cátedra. KRaft mode, sin Zookeeper.
+  kafka-local:
+    # Broker LOCAL para probar sin la plataforma. El bus real es `event-bus:29092` (KAFKA.pdf) y no lo
+    # operamos. Se llama distinto de `event-bus` a propósito: llm-service también está en la red
+    # `tpi-platform`, y dos servicios con el mismo nombre en redes distintas harían que DNS devuelva
+    # ambos. Mismo puerto interno (29092) que el bus real. KRaft mode, sin Zookeeper.
     image: apache/kafka:3.8.0
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
-      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
-      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: PLAINTEXT://:29092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-local:29092
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-local:9093
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
     healthcheck:
-      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092"]
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:29092"]
       interval: 5s
       timeout: 5s
       retries: 12
 
   # minio:
   #   # Almacenamiento de objetos para los PDF originales — "solo si nadie más los
-  #   # tiene" (docs/12 §1). Hoy el PDF se guarda como BYTEA en rag_documents, decisión
-  #   # explícita (docs/estado-implementacion/ep-09/ingesta.md, "Qué NO se portó").
+  #   # tiene" (docs/03-capacidades-de-ia/rag-e-ingesta/01-almacenamiento-e-ingesta.md). Hoy el PDF
+  #   # se guarda como BYTEA en rag_documents, decisión explícita
+  #   # (docs/06-operacion-calidad-y-pruebas/04-estado-de-implementacion/ep-09/ingesta.md, "Qué NO se portó").
   #   image: minio/minio:latest
   #   command: server /data --console-address ":9001"
   #   environment:
@@ -100,7 +108,8 @@ services:
   #   volumes:
   #     - llm-minio-data:/data
 
-  # Eureka y API Gateway NO están acá, ni siquiera comentados: docs/25 registra que "no
+  # Eureka y API Gateway NO están acá, ni siquiera comentados:
+  # docs/06-operacion-calidad-y-pruebas/03-matriz-de-pruebas-de-infraestructura.md registra que "no
   # existe un servidor Eureka/Gateway ejecutable en este repositorio" y que esa suite se
   # prueba "junto con los módulos reales, no como simulación local" — los pone el Tema
   # 01/11. `spring-cloud-starter-netflix-eureka-client` ya está en el pom.xml del lado

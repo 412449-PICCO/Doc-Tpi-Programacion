@@ -115,6 +115,10 @@ body {
   color: #fff;
 }
 
+:root body app-calibrations-page button.save-button {
+  color: #fff;
+}
+
 :root body app-golden-set-page .field-help :is(summary, p) {
   border-color: var(--accent);
   color: var(--accent);

@@ -60,20 +60,23 @@ flowchart LR
 
 ## 2. Eventos que publicamos
 
-### `<evento>.v1`
+### `<EVENT_TYPE>`
 
-**Consumidores:** `<equipo>`
+**Consumidores:** `<equipo>` · **Tópico:** `<tópico asignado por Notificaciones>` (o "provisorio")
 
 ```json
-{ "eventId": "uuid", "version": "1.0", "occurredAt": "ISO-8601", "producer": "<servicio>",
-  "data": { "<campo>": "..." } }
+{ "eventId": "uuid", "eventType": "<EVENT_TYPE>", "timestamp": "ISO-8601", "producer": "<servicio>",
+  "payload": { "<campo>": "..." } }
 ```
+
+Envelope de cinco campos del estándar Kafka (`KAFKA.pdf`): sin `eventVersion`, `eventType` en
+`MAYÚSCULAS_CON_GUION_BAJO`, todo en inglés. Ver el skill `contratos-kafka`.
 
 ## 3. Eventos que consumimos
 
 | Evento | Lo publica | Qué dispara en nosotros |
 |---|---|---|
-| `<evento>.v1` | `<equipo>` | [·] |
+| `<EVENT_TYPE>` | `<equipo>` | [·] |
 
 **Estructura mínima que necesitamos:** [campos obligatorios y por qué].
 

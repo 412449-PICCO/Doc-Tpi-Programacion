@@ -1,4 +1,4 @@
-import { HttpErrorResponse, httpResource } from '@angular/common/http';
+import { httpResource } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { toSignal } from '@angular/core/rxjs-interop';
@@ -25,10 +25,10 @@ export class EvaluatorShell {
     const url = this.currentUrl();
     return url.includes('/golden-set/new') ? 'Nuevo Golden Set' : '';
   });
-  readonly activeCalibration = httpResource<ActiveCalibration>(() => {
+  readonly activeCalibration = httpResource<ActiveCalibration | null>(() => {
     const courseId = this.courseId();
     return courseId ? `/api/llm/courses/${courseId}/active-calibration` : undefined;
-  });
+  }, { defaultValue: null });
   readonly assignments = httpResource<AssignmentPage>(() => {
     const courseId = this.courseId();
     return courseId ? `/api/llm/courses/${courseId}/challenge-calibration-assignments` : undefined;
@@ -37,12 +37,8 @@ export class EvaluatorShell {
     const courseId = this.courseId();
     return courseId ? `/api/llm/courses/${courseId}/pending-evaluations` : undefined;
   }, { defaultValue: { items: [] } });
-  readonly hasActiveCalibration = computed(() => this.activeCalibration.hasValue());
-  readonly hasNoActiveCalibration = computed(() => {
-    const error = this.activeCalibration.error();
-    return error instanceof HttpErrorResponse && error.status === 404;
-  });
-  readonly calibrationLabel = computed(() => this.activeCalibration.isLoading() ? 'Consultando calibración…' : this.hasActiveCalibration() ? 'Calibración activa' : this.hasNoActiveCalibration() ? 'Sin calibración activa' : this.activeCalibration.error() ? 'No se pudo consultar la calibración' : 'Sin calibración activa');
+  readonly hasActiveCalibration = computed(() => !!this.activeCalibration.value());
+  readonly calibrationLabel = computed(() => this.activeCalibration.isLoading() ? 'Consultando calibración…' : this.hasActiveCalibration() ? 'Calibración activa' : this.activeCalibration.error() ? 'No se pudo consultar la calibración' : 'Sin calibración activa');
   readonly sectionContent = computed(() => {
     const url = this.currentUrl();
     if (url.includes('/rubricas/new')) return { label: 'RÚBRICAS', title: 'Nueva rúbrica', description: 'Partí de una plantilla institucional aprobada y adaptala a las necesidades del curso.' };
